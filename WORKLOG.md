@@ -15,4 +15,4 @@
 - [x] Module stubs: build (loader done), guard, fleet, cron911, modelguard, standup, meshbridge, factory, cli
 - [x] blueprints/sales first draft (team.yaml + crons.yaml)
 - [ ] Verify: `hermes plugins doctor .` + `pytest tests/` + first commit
-- [ ] Set up 24/7 build crons (8am / 12pm / 8pm / 2am sweep)
+- [x] Set up 24/7 build crons (morning 8am c246054c4d36 / noon 12pm 99894c532b14 / evening 8pm b2b0332681b0 / sweep 2am 540639626cbc) — D1 kicked off immediately
