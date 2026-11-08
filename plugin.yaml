@@ -1,0 +1,17 @@
+name: hermes-teamops
+version: 0.1.0
+description: "Build, run, watch, fix and grow a multi-agent team: blueprint installer + Agent Factory + Deploy Guard (preflight/smoke/rollback), fleet status + mesh view, Cron911 silent-gap detection, Model Guard, team standup digest and mesh sync."
+provides_tools:
+  - blueprint_list
+  - team_deploy
+  - team_verify
+  - team_rollback
+  - team_factory
+  - team_status
+  - cron_scan
+  - model_scan
+  - team_standup
+  - mesh_sync
+provides_hooks: []
+provides_middleware: []
+requires_hermes: ">=0.21.4"
