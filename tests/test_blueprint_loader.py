@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from build import Blueprint
+from teamops.build import Blueprint
 
 
 @pytest.fixture(scope="module")

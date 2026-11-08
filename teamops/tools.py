@@ -10,7 +10,7 @@ import json
 import os
 from pathlib import Path
 
-DEFAULT_BLUEPRINTS = Path(__file__).resolve().parent / "blueprints"
+DEFAULT_BLUEPRINTS = Path(__file__).resolve().parent.parent / "blueprints"
 DEFAULT_HOME = Path(os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")))
 
 

@@ -1,4 +1,4 @@
-"""Make the repo root importable so `from build import Blueprint` works."""
+"""Make the repo root importable so `from teamops.build import Blueprint` works."""
 import sys
 from pathlib import Path
 
