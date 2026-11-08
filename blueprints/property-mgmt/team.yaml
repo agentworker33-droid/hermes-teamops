@@ -1,0 +1,23 @@
+name: property-mgmt
+version: 0.1.0
+description: "Property Management Team — owner + tenant-line boundary + maintenance-coordinator + books. Subset of the shipped property-management vertical, generalized for any HERMES_HOME."
+roles:
+  - name: owner
+    title: Owner & final authority
+    soul: souls/owner.md
+    toolsets: [file, terminal, web, delegation, cronjob]
+  - name: tenant-line
+    title: Tenant Line (structured-relay boundary)
+    soul: souls/tenant-line.md
+    toolsets: [file]
+  - name: maintenance-coordinator
+    title: Maintenance coordinator
+    soul: souls/maintenance-coordinator.md
+    toolsets: [file, web, terminal]
+  - name: books
+    title: Books & invoicing
+    soul: souls/books.md
+    toolsets: [file, web, terminal]
+shared:
+  kanban: assets/kanban.json
+  mesh: assets/mesh.json

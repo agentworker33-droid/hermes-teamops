@@ -1,0 +1,21 @@
+{
+  "columns": ["TODO", "IN_PROGRESS", "REVIEW", "DONE"],
+  "tasks": {
+    "seed_1": {
+      "id": "seed_1",
+      "title": "Confirm property list, units, and owner priorities",
+      "assignee": "owner",
+      "status": "TODO",
+      "deliverables": "property list in shared files",
+      "notes": "Replace seed tasks with real work at deploy."
+    },
+    "seed_2": {
+      "id": "seed_2",
+      "title": "Draft maintenance queue template and urgency rules",
+      "assignee": "maintenance-coordinator",
+      "status": "TODO",
+      "deliverables": "queue file in shared files",
+      "notes": ""
+    }
+  }
+}

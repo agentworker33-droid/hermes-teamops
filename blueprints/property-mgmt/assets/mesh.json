@@ -1,0 +1,11 @@
+{
+  "version": "0.1",
+  "edges": [
+    {"from": "tenant-line", "to": "maintenance-coordinator", "via": "event", "artifact": "queue.json"},
+    {"from": "tenant-line", "to": "owner", "via": "escalation", "artifact": "escalations.json"},
+    {"from": "tenant-line", "to": "books", "via": "event", "artifact": "rent-inbox.json"},
+    {"from": "maintenance-coordinator", "to": "owner", "via": "proposal", "artifact": "queue.json"},
+    {"from": "books", "to": "owner", "via": "report", "artifact": "books/ledger.md"}
+  ],
+  "shared_files": ["kanban.json", "queue.json", "escalations.json", "books/ledger.md"]
+}

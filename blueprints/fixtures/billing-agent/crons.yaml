@@ -1,0 +1,13 @@
+crons:
+  - name: sales-daily-digest
+    schedule: "0 9 * * 1-5"
+    profile: boss
+    prompt: "Write a one-page sales digest: pipeline changes, follow-ups due, content published. Deliver to the owner channel."
+  - name: sales-prospect-sweep
+    schedule: "0 12 * * 1-5"
+    profile: sales-dev
+    prompt: "Check the prospect queue, pick the top 3 warmest, draft personalized follow-ups. No mass outreach."
+  - name: billing-dunning-sweep
+    schedule: "0 10 * * 1-5"
+    profile: billing-agent
+    prompt: "Check the invoice ledger for overdue items, draft a polite reminder for each (no auto-send). Log to the books ledger."

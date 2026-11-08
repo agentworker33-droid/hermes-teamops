@@ -1,0 +1,12 @@
+{
+  "version": "0.1",
+  "edges": [
+    {"from": "sales-dev", "to": "boss", "via": "kanban", "artifact": "kanban.json"},
+    {"from": "research-analyst", "to": "sales-dev", "via": "findings", "artifact": "findings/YYYY-MM.md"},
+    {"from": "content-marketer", "to": "boss", "via": "review", "artifact": "kanban.json"},
+    {"from": "finance-analyst", "to": "boss", "via": "report", "artifact": "finance/ledger.md"},
+    {"from": "support-lead", "to": "sales-dev", "via": "handoff", "artifact": "support/log.md"},
+    {"from": "support-lead", "to": "boss", "via": "escalation", "artifact": "support/log.md"}
+  ],
+  "shared_files": ["kanban.json", "support/log.md", "finance/ledger.md", "findings/"]
+}

@@ -1,0 +1,21 @@
+{
+  "columns": ["TODO", "IN_PROGRESS", "REVIEW", "DONE"],
+  "tasks": {
+    "seed_1": {
+      "id": "seed_1",
+      "title": "Confirm team scope and owner priorities for first sprint",
+      "assignee": "boss",
+      "status": "TODO",
+      "deliverables": "one-page priorities",
+      "notes": "Replace seed tasks with real work at deploy."
+    },
+    "seed_2": {
+      "id": "seed_2",
+      "title": "Draft pipeline tracker template (CSV + kanban columns)",
+      "assignee": "sales-dev",
+      "status": "TODO",
+      "deliverables": "tracker file in shared files",
+      "notes": ""
+    }
+  }
+}

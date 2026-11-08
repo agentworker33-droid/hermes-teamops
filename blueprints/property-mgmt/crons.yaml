@@ -1,0 +1,9 @@
+crons:
+  - name: pm-weekly-owner-digest
+    schedule: "0 8 * * 1"
+    profile: owner
+    prompt: "Write a one-page property digest: open maintenance tickets, rent/books status, tenant-line escalations, and what needs owner sign-off this week."
+  - name: pm-maintenance-sweep
+    schedule: "0 9 * * 1-5"
+    profile: maintenance-coordinator
+    prompt: "Check the maintenance queue, pick the top 3 open items by urgency, draft a vendor or owner recommendation for each. No auto-dispatch."

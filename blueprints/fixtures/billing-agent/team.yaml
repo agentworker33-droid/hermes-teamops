@@ -1,0 +1,35 @@
+name: billing-agent
+version: 0.1.0
+description: "Factory demo: sales team + billing-agent role (invoicing, payment follow-up, dunning). Generated live in the demo by the Agent Factory; this fixture is the pre-baked fallback."
+roles:
+  - name: boss
+    title: Orchestrator & reviewer
+    soul: souls/boss.md
+    toolsets: [file, terminal, web, delegation, cronjob]
+  - name: sales-dev
+    title: Sales pipeline & outreach
+    soul: souls/sales-dev.md
+    toolsets: [file, web, terminal]
+  - name: content-marketer
+    title: Content + campaigns
+    soul: souls/content-marketer.md
+    toolsets: [file, web, image_gen]
+  - name: research-analyst
+    title: Market + intel research
+    soul: souls/research-analyst.md
+    toolsets: [file, web]
+  - name: finance-analyst
+    title: Books, cash flow, pricing
+    soul: souls/finance-analyst.md
+    toolsets: [file, web, terminal]
+  - name: support-lead
+    title: Customer support & triage
+    soul: souls/support-lead.md
+    toolsets: [file, web]
+  - name: billing-agent
+    title: Invoicing, payments, dunning
+    soul: souls/billing-agent.md
+    toolsets: [file, web, terminal]
+shared:
+  kanban: assets/kanban.json
+  mesh: assets/mesh.json
