@@ -45,9 +45,20 @@ class FakeRunner:
             job_dir.mkdir(parents=True, exist_ok=True)
             jobs = job_dir / "jobs.json"
             existing = json.loads(jobs.read_text()) if jobs.exists() else {"jobs": []}
-            existing["jobs"].append({"name": cmd[cmd.index("--name") + 1]})
+            existing["jobs"].append({"name": cmd[cmd.index("--name") + 1], "id": f"job-{len(existing['jobs']) + 1}"})
             jobs.write_text(json.dumps(existing))
             return 0, "job created"
+        if len(cmd) >= 5 and cmd[1] == "-p" and cmd[3] == "cron" and cmd[4] == "remove":
+            # remove by id: delete the matching job
+            profile = cmd[2]
+            job_id = cmd[5]
+            job_dir = Path(env.get("HERMES_HOME", "/tmp")) / "profiles" / profile / "cron"
+            jobs_file = job_dir / "jobs.json"
+            if jobs_file.exists():
+                doc = json.loads(jobs_file.read_text())
+                doc["jobs"] = [j for j in doc.get("jobs", []) if j.get("id") != job_id]
+                jobs_file.write_text(json.dumps(doc))
+            return 0, "job removed"
         if len(cmd) >= 3 and cmd[1] == "cron" and cmd[2] == "create":
             # global cron; put it in home cron dir for smoke
             home = Path(env.get("HERMES_HOME", "/tmp"))
@@ -144,6 +155,21 @@ def test_rollback_removes_profiles_and_snapshot(tmp_path, sales_bp):
     by_name = {r.name: r.status for r in results}
     assert by_name["rollback-snapshot"] == "PASS"
     assert not (home / "teams" / "sales" / ".teamops-sales.snapshot.json").exists()
+
+
+def test_rollback_removes_crons_by_id(tmp_path, sales_bp):
+    home = tmp_path
+    guard = DeployGuard(sales_bp, home=home)
+    guard.runner = FakeRunner()
+    guard.deploy()
+    jobs_file = home / "profiles" / "teamops-sales-boss" / "cron" / "jobs.json"
+    assert "sales-daily-digest" in jobs_file.read_text()
+    rb = DeployGuard(sales_bp, home=home)
+    rb.runner = FakeRunner()
+    results = rb.rollback()
+    by_name = {r.name: r.status for r in results}
+    assert by_name["rollback-cron:sales-daily-digest"] in ("PASS", "SKIP")
+    assert all(r.status != "FAIL" for r in results)
 
 
 def test_blueprint_loader_property_mgmt():

@@ -50,10 +50,11 @@ class DeployGuard:
 
     runner = staticmethod(default_runner)
 
-    def __init__(self, blueprint: Blueprint, home: Path | None = None, prefix: str | None = None):
+    def __init__(self, blueprint: Blueprint | None = None, home: Path | None = None, prefix: str | None = None,
+                 team: str | None = None):
         self.blueprint = blueprint
         self.home = Path(home) if home else Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes"))
-        self.team = blueprint.name
+        self.team = team or (blueprint.name if blueprint else "team")
         self.prefix = prefix or f"teamops-{self.team}-"
         self.checks: list[CheckResult] = []
         self.snapshot: dict = {}
@@ -76,6 +77,11 @@ class DeployGuard:
     def _add(self, name: str, status: str, detail: str = "", **extra) -> None:
         self.checks.append(CheckResult(name, status, detail, extra))
 
+    def _bp(self) -> Blueprint:
+        if self.blueprint is None:  # pragma: no cover — only reachable on programmer error
+            raise RuntimeError("blueprint required for this operation")
+        return self.blueprint
+
     def profile_name(self, role: dict) -> str:
         return f"{self.prefix}{role['name']}"
 
@@ -91,13 +97,13 @@ class DeployGuard:
     # -- 1. preflight --------------------------------------------------------
     def preflight(self) -> list[CheckResult]:
         self.checks = []
-        self._add("blueprint", "PASS", f"{self.team} v{self.blueprint.team.get('version', '?')} · {len(self.blueprint.roles)} roles")
+        self._add("blueprint", "PASS", f"{self.team} v{self._bp().team.get('version', '?')} · {len(self._bp().roles)} roles")
         binpath = shutil.which("hermes")
         if binpath:
             self._add("hermes-bin", "PASS", f"{binpath}")
         else:
             self._add("hermes-bin", "FAIL", "hermes CLI not found on PATH")
-        for role in self.blueprint.roles:
+        for role in self._bp().roles:
             if not role.get("name") or not role.get("soul"):
                 self._add("role-format", "FAIL", f"role {role.get('name')!r} missing name/soul")
                 continue
@@ -114,7 +120,7 @@ class DeployGuard:
         else:
             self._add("disk", "FAIL", f"only {st.free // (1024*1024)} MB free")
         # name collision
-        collisions = [self.profile_name(r) for r in self.blueprint.roles if self.profile_dir(r).exists()]
+        collisions = [self.profile_name(r) for r in self._bp().roles if self.profile_dir(r).exists()]
         if collisions:
             self._add("name-collision", "FAIL", f"profiles already exist: {', '.join(collisions)}")
         else:
@@ -124,21 +130,22 @@ class DeployGuard:
     # -- 2. deploy -----------------------------------------------------------
     def deploy(self, dry_run: bool = False, chat_probe: bool = False) -> list[CheckResult]:
         self.checks = []
-        self.snapshot = {"team": self.team, "prefix": self.prefix, "profiles": [], "crons": [], "shared": []}
+        self.snapshot = {"team": self.team, "prefix": self.prefix, "blueprint_root": str(self._bp().root),
+                         "profiles": [], "crons": [], "shared": []}
         if dry_run:
-            for role in self.blueprint.roles:
+            for role in self._bp().roles:
                 self._add("dry-run", "PASS", f"would create profile {self.profile_name(role)}")
             return self.checks
 
         # 2a. profiles + souls
-        for role in self.blueprint.roles:
+        for role in self._bp().roles:
             name = self.profile_name(role)
             title = role.get("title", role["name"])
             code, out = self._cli(["profile", "create", name, "--no-alias", "--description", title])
             if code != 0:
                 self._add(f"profile:{name}", "FAIL", out.strip()[:200])
                 continue
-            soul_src = self.blueprint.soul_path(role)
+            soul_src = self._bp().soul_path(role)
             soul_dst = self.profile_dir(role) / "SOUL.md"
             try:
                 if soul_src and soul_src.exists():
@@ -152,7 +159,7 @@ class DeployGuard:
             self.snapshot["profiles"].append(name)
 
         # 2b. crons (per-profile store)
-        for cron in self.blueprint.crons:
+        for cron in self._bp().crons:
             role_name = cron.get("profile") or "boss"
             profile = f"{self.prefix}{role_name}"
             job_name = cron.get("name", "teamops-job")
@@ -163,7 +170,8 @@ class DeployGuard:
                 "--name", job_name, "--deliver", "local",
                 schedule, prompt,
             ])
-            self.snapshot["crons"].append({"profile": profile, "name": job_name})
+            job_id = self._find_job_id(profile, job_name)
+            self.snapshot["crons"].append({"profile": profile, "name": job_name, "job_id": job_id})
             if code != 0:
                 self._add(f"cron:{job_name}", "FAIL", out.strip()[:200])
             else:
@@ -173,8 +181,8 @@ class DeployGuard:
         shared_dir = self.team_shared_dir()
         try:
             shared_dir.mkdir(parents=True, exist_ok=True)
-            for key, rel in self.blueprint.team.get("shared", {}).items():
-                src = self.blueprint.root / rel
+            for key, rel in self._bp().team.get("shared", {}).items():
+                src = self._bp().root / rel
                 if src.exists():
                     dst = shared_dir / src.name
                     dst.write_text(src.read_text())
@@ -190,10 +198,22 @@ class DeployGuard:
             self._add("shared", "FAIL", str(e))
         return self.checks
 
+    def _find_job_id(self, profile: str, job_name: str) -> str:
+        jf = self.home / "profiles" / profile / "cron" / "jobs.json"
+        if jf.exists():
+            try:
+                doc = json.loads(jf.read_text())
+                for job in doc.get("jobs", []):
+                    if job.get("name") == job_name:
+                        return job.get("id", "")
+            except (json.JSONDecodeError, ValueError):
+                pass
+        return ""
+
     # -- 3. smoke (verify) ---------------------------------------------------
     def smoke(self, chat_probe: bool = False) -> list[CheckResult]:
         self.checks = []
-        for role in self.blueprint.roles:
+        for role in self._bp().roles:
             name = self.profile_name(role)
             pdir = self.profile_dir(role)
             if pdir.is_dir():
@@ -209,7 +229,7 @@ class DeployGuard:
             else:
                 self._add(f"profile:{name}", "FAIL", f"profile dir missing: {pdir}")
         # expected cron names present somewhere
-        expected = [c.get("name") for c in self.blueprint.crons if c.get("name")]
+        expected = [c.get("name") for c in self._bp().crons if c.get("name")]
         found = self._find_job_names()
         for job in expected:
             if job in found:
@@ -217,7 +237,7 @@ class DeployGuard:
             else:
                 self._add(f"cron-present:{job}", "FAIL", f"not found in any jobs.json (found: {sorted(found) or 'none'})")
         # shared assets parse
-        for key, rel in self.blueprint.team.get("shared", {}).items():
+        for key, rel in self._bp().team.get("shared", {}).items():
             dst = self.team_shared_dir() / Path(rel).name
             if dst.exists():
                 try:
@@ -229,7 +249,7 @@ class DeployGuard:
                 self._add(f"shared:{dst.name}", "FAIL", "missing")
         # chat probe (bounded, optional)
         if chat_probe:
-            role0 = self.blueprint.roles[0]
+            role0 = self._bp().roles[0]
             name = self.profile_name(role0)
             code, out = self._cli(["-p", name, "chat", "-q", "reply: ok"], timeout=60)
             if code == 0 and "ok" in out.lower():
@@ -242,7 +262,7 @@ class DeployGuard:
 
     def _find_job_names(self) -> set[str]:
         found: set[str] = set()
-        for role in self.blueprint.roles:
+        for role in self._bp().roles:
             jf = self.profile_dir(role) / "cron" / "jobs.json"
             if jf.exists():
                 try:
@@ -255,6 +275,11 @@ class DeployGuard:
 
     # -- 4. rollback -----------------------------------------------------------
     def rollback(self) -> list[CheckResult]:
+        """Snapshot-driven rollback: undo everything a deploy created.
+
+        Deliberately does NOT require the blueprint: works even if the blueprint
+        dir was moved/removed (e.g. a fixture) — the snapshot is the source of truth.
+        """
         self.checks = []
         snap_path = self.snapshot_path()
         if not snap_path.exists():
@@ -265,6 +290,28 @@ class DeployGuard:
         except (json.JSONDecodeError, ValueError) as e:  # noqa: BLE001
             self._add("rollback", "FAIL", f"snapshot unreadable: {e}")
             return self.checks
+        # snapshot drives the operation; prefix may differ from this guard's default
+        team = snap.get("team", self.team)
+        prefix = snap.get("prefix", self.prefix)
+        self.prefix = prefix
+        self.team = team
+        # crons first — they live inside the profile; once the profile is gone the
+        # jobs die with it, so a missing profile here is already-clean, not a failure.
+        for cron in snap.get("crons", []):
+            prof = cron.get("profile")
+            name = cron.get("name")
+            job_id = cron.get("job_id")
+            if not prof or not name:
+                continue
+            if not job_id:
+                self._add(f"rollback-cron:{name}", "SKIP", "no job_id in snapshot (older deploy)")
+                continue
+            code, out = self._cli(["-p", prof, "cron", "remove", job_id], timeout=120)
+            if code == 0 or "does not exist" in out.lower():
+                self._add(f"rollback-cron:{name}", "PASS" if code == 0 else "SKIP",
+                          out.strip()[:160] or "removed")
+            else:
+                self._add(f"rollback-cron:{name}", "FAIL", out.strip()[:200])
         for prof in snap.get("profiles", []):
             code, out = self._cli(["profile", "delete", "-y", prof], timeout=120)
             self._add(f"rollback-profile:{prof}", "PASS" if code == 0 else "FAIL", out.strip()[:200] or "deleted")

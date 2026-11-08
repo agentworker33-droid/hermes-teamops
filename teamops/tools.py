@@ -72,16 +72,18 @@ def team_deploy(name: str, prefix: str | None = None, dry_run: bool = False,
         return _err(f"team_deploy failed: {e}")
 
 
-def team_verify(name: str, home: str | None = None) -> str:
+def team_verify(name: str, home: str | None = None, blueprints_root: str | None = None) -> str:
     try:
-        return _ok(build_mod.verify_team(name, home=Path(home) if home else None))
+        return _ok(build_mod.verify_team(name, home=Path(home) if home else None,
+                                         blueprints_root=Path(blueprints_root) if blueprints_root else None))
     except Exception as e:  # noqa: BLE001
         return _err(f"team_verify failed: {e}")
 
 
-def team_rollback(name: str, home: str | None = None) -> str:
+def team_rollback(name: str, home: str | None = None, blueprints_root: str | None = None) -> str:
     try:
-        return _ok(build_mod.rollback_team(name, home=Path(home) if home else None))
+        return _ok(build_mod.rollback_team(name, home=Path(home) if home else None,
+                                           blueprints_root=Path(blueprints_root) if blueprints_root else None))
     except Exception as e:  # noqa: BLE001
         return _err(f"team_rollback failed: {e}")
 
@@ -100,7 +102,8 @@ def team_factory(spec: str, base: str | None = None, name: str | None = None,
                                       blueprints_root=root.parent)
             result["deploy"] = d
             if d.get("green"):
-                result["verify"] = build_mod.verify_team(root.name, home=Path(home) if home else None)
+                result["verify"] = build_mod.verify_team(root.name, home=Path(home) if home else None,
+                                                         blueprints_root=root.parent)
         return _ok(result)
     except Exception as e:  # noqa: BLE001
         return _err(f"team_factory failed: {e}")

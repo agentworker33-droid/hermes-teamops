@@ -63,15 +63,21 @@ def deploy_team(name_or_path: str, home: Path | None = None, prefix: str | None 
     return guard.summary()
 
 
-def verify_team(name_or_path: str, home: Path | None = None, chat_probe: bool = False) -> dict:
-    bp = load_blueprint(name_or_path)
+def verify_team(name_or_path: str, home: Path | None = None, chat_probe: bool = False,
+                blueprints_root: Path | None = None) -> dict:
+    bp = load_blueprint(name_or_path, blueprints_root)
     guard = DeployGuard(bp, home=home)
     guard.smoke(chat_probe=chat_probe)
     return guard.summary()
 
 
-def rollback_team(name_or_path: str, home: Path | None = None) -> dict:
-    bp = load_blueprint(name_or_path)
-    guard = DeployGuard(bp, home=home)
+def rollback_team(name_or_path: str, home: Path | None = None, blueprints_root: Path | None = None) -> dict:
+    try:
+        bp = load_blueprint(name_or_path, blueprints_root)
+        guard = DeployGuard(bp, home=home)
+    except (FileNotFoundError, ValueError):
+        # snapshot-driven: blueprint may live under fixtures/ or be gone — guard
+        # without a blueprint, team name from the argument.
+        guard = DeployGuard(home=home, team=Path(name_or_path).stem if Path(name_or_path).exists() else name_or_path)
     guard.rollback()
     return guard.summary()
