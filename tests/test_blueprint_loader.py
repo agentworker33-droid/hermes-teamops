@@ -8,7 +8,7 @@ from teamops.build import Blueprint
 
 @pytest.fixture(scope="module")
 def sales_blueprint() -> Blueprint:
-    root = Path(__file__).resolve().parent.parent / "blueprints" / "sales"
+    root = Path(__file__).resolve().parent.parent / "teamops" / "blueprints" / "sales"
     return Blueprint(root)
 
 

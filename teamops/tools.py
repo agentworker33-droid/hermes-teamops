@@ -12,7 +12,7 @@ from pathlib import Path
 from . import build as build_mod
 from . import factory as factory_mod
 
-DEFAULT_BLUEPRINTS = Path(__file__).resolve().parent.parent / "blueprints"
+DEFAULT_BLUEPRINTS = Path(__file__).resolve().parent / "blueprints"
 DEFAULT_HOME = Path(os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")))
 
 

@@ -48,7 +48,7 @@ def load_blueprint(name_or_path: str, blueprints_root: Path | None = None) -> Bl
             # maybe passed path to team.yaml itself
             root = p.parent
         return Blueprint(root)
-    root = (blueprints_root or Path(__file__).resolve().parent.parent / "blueprints") / name_or_path
+    root = (blueprints_root or Path(__file__).resolve().parent / "blueprints") / name_or_path
     return Blueprint(root)
 
 

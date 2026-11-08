@@ -16,8 +16,8 @@ import tempfile
 from pathlib import Path
 
 FACTORY_SCRIPT = Path.home() / "agentic-coding-team.sh"
-FIXTURES_DIR = Path(__file__).resolve().parent.parent / "blueprints" / "fixtures"
-BLUEPRINTS_DIR = Path(__file__).resolve().parent.parent / "blueprints"
+FIXTURES_DIR = Path(__file__).resolve().parent / "blueprints" / "fixtures"
+BLUEPRINTS_DIR = Path(__file__).resolve().parent / "blueprints"
 
 
 def _run_lane(spec: str, timeout: int = 600) -> tuple[int, str, Path | None]:

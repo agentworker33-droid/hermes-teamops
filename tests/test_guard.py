@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 @pytest.fixture(scope="module")
 def sales_bp() -> Blueprint:
-    return Blueprint(ROOT / "blueprints" / "sales")
+    return Blueprint(ROOT / "teamops" / "blueprints" / "sales")
 
 
 class FakeRunner:
@@ -147,7 +147,7 @@ def test_rollback_removes_profiles_and_snapshot(tmp_path, sales_bp):
 
 
 def test_blueprint_loader_property_mgmt():
-    bp = Blueprint(ROOT / "blueprints" / "property-mgmt")
+    bp = Blueprint(ROOT / "teamops" / "blueprints" / "property-mgmt")
     assert bp.name == "property-mgmt"
     assert len(bp.roles) == 4
     names = [r["name"] for r in bp.roles]
@@ -155,6 +155,6 @@ def test_blueprint_loader_property_mgmt():
 
 
 def test_fixture_billing_agent_loads():
-    bp = Blueprint(ROOT / "blueprints" / "fixtures" / "billing-agent")
+    bp = Blueprint(ROOT / "teamops" / "blueprints" / "fixtures" / "billing-agent")
     assert bp.name == "billing-agent"
     assert len(bp.roles) == 7
