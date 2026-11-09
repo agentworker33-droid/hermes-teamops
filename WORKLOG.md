@@ -71,3 +71,5 @@
 - [ ] Freeze additions: **Nov 10 7PM EST** — after that only fixes; Nov 11 = PR final pin + video + form only.
 
 ## ACCEPTANCE RULE (boss-live 2026-11-09, user-confirmed): every optional/external feature MUST degrade gracefully — absent creds/config (VPS SSH keys, Twilio creds, fallback model pool) → feature disabled/hidden, plugin remains 100% functional, zero nags, zero broken UI. No AutomatedAgents account is ever required. Enforce in Tasks 2.9/2.11/2.12 code + tests.
+
+## CREDS-SOURCE RULE (boss-live 2026-11-09): the plugin NEVER stores or ships credentials. Tasks 2.12/2.11 read credentials from the RUNNING USER's own environment only — Twilio = TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/TWILIO_PHONE_NUMBER from the user's .env/config (no shared backend, no embedded secrets); VPS = user's own SSH key path + host config (e.g. ~/.ssh/id_ed25519). Mock/no-creds mode must always work for tests and demos.
