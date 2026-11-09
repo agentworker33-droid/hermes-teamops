@@ -106,6 +106,35 @@ _SCHEMA = {
             },
         },
     },
+    "team_dashboard": {
+        "toolset": "teamops",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "home": {"type": "string", "description": "Optional HERMES_HOME override"},
+                "port": {"type": "integer", "description": "Port (default 8781)"},
+                "open_browser": {"type": "boolean", "description": "Open the dashboard in a browser (default true)"},
+            },
+        },
+    },
+    "team_dashboard_status": {
+        "toolset": "teamops",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "home": {"type": "string", "description": "Optional HERMES_HOME override"},
+            },
+        },
+    },
+    "team_dashboard_stop": {
+        "toolset": "teamops",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "home": {"type": "string", "description": "Optional HERMES_HOME override"},
+            },
+        },
+    },
 }
 
 SCHEMAS = _SCHEMA

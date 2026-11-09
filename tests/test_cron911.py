@@ -86,3 +86,44 @@ def test_scan_respects_db_override(tmp_path):
     shutil.move(str(home / "cron" / "executions.db"), str(alt_db))
     r = cron911.scan(home, db_override=alt_db)
     assert all("NEVER ran" not in i["detail"] for i in r["issues"])
+
+
+def test_merge_issues_collapses_same_job_to_highest_severity():
+    issues = [
+        {"severity": "MED", "scope": "boss", "job": "pm-brief", "detail": "last_status=error"},
+        {"severity": "HIGH", "scope": "boss", "job": "pm-brief", "detail": "failure_streak=5"},
+        {"severity": "INFO", "scope": "boss", "job": "pm-brief", "detail": "last_error=boom"},
+    ]
+    out = cron911.merge_issues(issues)
+    assert len(out) == 1
+    assert out[0]["severity"] == "HIGH"
+    assert out[0]["job"] == "pm-brief"
+    assert "failure_streak=5" in out[0]["detail"]
+    assert "last_status=error" in out[0]["detail"]
+
+
+def test_merge_issues_drops_substring_duplicates_and_sorts():
+    issues = [
+        {"severity": "HIGH", "scope": "home", "job": "gap", "detail": "SILENT GAP: last run 30h ago"},
+        {"severity": "HIGH", "scope": "home", "job": "gap", "detail": "SILENT GAP: last run 30h ago (2.0d ago)"},
+        {"severity": "HIGH", "scope": "a", "job": "z", "detail": "z first"},
+        {"severity": "HIGH", "scope": "a", "job": "b", "detail": "b first"},
+    ]
+    out = cron911.merge_issues(issues)
+    jobs = [(i["scope"], i["job"]) for i in out]
+    assert jobs == [("a", "b"), ("a", "z"), ("home", "gap")]
+    gap = next(i for i in out if i["job"] == "gap")
+    assert gap["detail"].count("SILENT GAP") == 1  # substring dup dropped
+
+
+def test_scan_output_is_merged_per_job(tmp_path):
+    home = tmp_path / "home"
+    # one job that trips both failure-streak AND last_error rules -> one merged row
+    FakeHome(home).add_job(_job("h1", "multi-bad", failure_streak=4,
+                                last_status="error", last_error="boom")).write()
+    r = cron911.scan(home)
+    rows = [i for i in r["issues"] if i["job"] == "multi-bad"]
+    assert len(rows) == 1
+    assert rows[0]["severity"] == "HIGH"
+    assert "failure_streak=4" in rows[0]["detail"]
+    assert "boom" in rows[0]["detail"]

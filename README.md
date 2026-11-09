@@ -9,12 +9,15 @@ Build, run, watch, fix, and grow a multi-agent team — one plugin.
 
 CLI: `hermes teams <command>`. Tool surface mirrors it: `blueprint_list`, `team_deploy`,
 `team_verify`, `team_rollback`, `team_factory`, `team_status`, `cron_scan`, `model_scan`,
-`team_standup`, `mesh_sync`.
+`team_standup`, `mesh_sync`, `team_dashboard`, `team_dashboard_status`, `team_dashboard_stop`.
 
 Plan: `~/.hermes/plans/2026-11-08_0450-hermes-teamops-plugin.md`
 Build worklog: `WORKLOG.md` (cron shifts append here after every task).
 
-Status: **D2 — Watch/Fix/Grow implemented + tested (54 tests) + Task 2.8 web dashboard (status --html, interactive mesh graph). D3 ship path remaining (catalog PR, demo video, form).**
+Status: **D2 — Watch/Fix/Grow implemented + tested + Task 2.8 web dashboard
+(`status --html`, interactive mesh graph) + live dashboard server
+(`teams dashboard`, daemon + /health + stop). 70 tests. Next: stretch 2.9–2.12
+(auto model-swap, vertical ports, VPS, Twilio) then D3 ship (PR, video, form).**
 
 ## Install
 
@@ -41,6 +44,9 @@ hermes teams deploy sales         # profiles + SOULs + crons + kanban + mesh
 hermes teams verify sales         # Deploy Guard table, all PASS
 hermes teams status               # fleet panel: profiles, memory %, crons, mesh
 hermes teams status --html        # self-contained dashboard (opens in browser; --no-open to write only)
+hermes teams dashboard            # LIVE dashboard server (fresh data per request; daemon + /health)
+hermes teams dashboard-status     # is the live server running?
+hermes teams dashboard-stop       # stop it
 hermes teams cron-scan            # Cron911: silent gaps + failures + dead models
 hermes teams model-scan           # Model Guard: dead models + fallback suggestions
 hermes teams standup              # last-24h digest + open kanban
@@ -72,9 +78,10 @@ used by the Agent Factory when the live lane is unavailable.
 | `build.py` | blueprint loader + deploy/verify/rollback orchestration |
 | `guard.py` | Deploy Guard: preflight / deploy / smoke / rollback (local, not VPS) |
 | `factory.py` | Agent Factory wrapper (fixture fallback) |
-| `fleet.py` | fleet reads: profiles, jobs.json, executions.db, memory %, mesh |
+| `fleet.py` | fleet reads: profiles, jobs.json, executions.db, memory %, mesh; team grouping + ephemeral-team inventory |
 | `dashboard.py` | self-contained HTML dashboard (fleet panel, cron health, interactive SVG mesh graph; no CDN) |
-| `cron911.py` | silent-gap + failure + dead-model detection (detect-only) |
+| `server.py` | LIVE dashboard server: fresh HTML per request, /health, daemonize, stop (mnemosyne-dashboard pattern) |
+| `cron911.py` | silent-gap + failure + dead-model detection (detect-only; multi-rule rows merged) |
 | `modelguard.py` | dead-model detect + recommend (never auto-swaps) |
 | `standup.py` | last-24h digest generator |
 | `meshbridge.py` | MESH-MAP.md append + shared-Mnemosyne outbox |
@@ -86,9 +93,10 @@ used by the Agent Factory when the live lane is unavailable.
 python3 -m pytest -q
 ```
 
-54 tests: blueprint loader, Deploy Guard (mocked hermes), factory fallback,
-fleet/cron911/modelguard/standup/meshbridge/dashboard against a fake HERMES_HOME
-built with the real jobs.json + executions.db schema.
+70 tests: blueprint loader, Deploy Guard (mocked hermes), factory fallback,
+fleet/cron911/modelguard/standup/meshbridge/dashboard/server against a fake HERMES_HOME
+built with the real jobs.json + executions.db schema, plus a manifest-coherence
+test pinning plugin.yaml ⇄ schemas ⇄ handlers.
 
 ## Cut list (NOT in v1)
 

@@ -4,9 +4,21 @@
 > Order: D0 scaffold → D1 Build module → D2 Watch/Fix/Grow → D3 ship.
 
 ## Status
-- Phase: **D2 — Watch/Fix/Grow COMPLETE + Task 2.8 web dashboard DONE (morning shift). Next: Task 2.9 auto model-swap (opt-in) — freeze Nov 10 7PM EST**
+- Phase: **D2 — Watch/Fix/Grow COMPLETE + Task 2.8 web dashboard DONE + LIVE dashboard server DONE (noon shift). Next: Task 2.9 auto model-swap (opt-in) — freeze Nov 10 7PM EST**
 - Next task: Task 2.9 auto model-swap (OPT-IN), then 2.10 port vertical blueprints, 2.11 VPS, 2.12 Twilio — then D3 ship
 - Deadline: **Nov 11 2026 5PM EST**
+
+## 2026-11-09 12:00 — NOON shift (finish in-progress live dashboard server work left uncommitted)
+- [x] **Finished uncommitted work found at shift start**: LIVE dashboard server (`teamops/server.py`, daemon + /health + stop + action dispatch), dashboard redesign (Mnemosyne-rail layout), cron911 multi-rule issue merging, fleet team enrichment + ephemeral-team inventory — code was green but never committed.
+- [x] **Schemas gap fixed**: plugin.yaml declared team_dashboard / team_dashboard_status / team_dashboard_stop but schemas.py lacked them → register() never exposed them as LLM tools (validate warned). Added schemas; doctor now registers **13 tools** (10→13), validate 0 warnings.
+- [x] **Real bug found + fixed**: fleet.parse_mesh_edges matched "->" before "-->" so "A --> B" parsed as ("-", B). Arrow matching is now longest-first ("-->", "->", "→").
+- [x] **Tests +10 → 70 GREEN**: merge_issues collapse/dedup/sort + merged scan output; parse_mesh_edges (table + mermaid lines); mesh_map picks up root-level team dirs (trading-desk) and skips profiles/; enrich_teams absorbs stems into team dirs + synthetic <2-profile groups excluded; ephemeral_teams inventory (monkeypatched Path.home + fake scripts, research-swarm lane parsing, agentic lanes table); available_blueprints (3 first-class blueprints, fixtures excluded, home/templates listed); server (404, cheap /health without dashboard build, pidfile while alive, live re-render between requests); manifest coherence (plugin.yaml ⇄ schemas ⇄ handlers pinned).
+- [x] Gates: `hermes plugins validate teamops --install-deps` → "Validation passed" (0 ⚠); `hermes plugins doctor teamops/` → OK, 13 tools, 0 hooks.
+- [x] **Live smoke on TEMP home `/tmp/teamops-smoke`** (never live box): `python3 -m teamops.server --daemon` started (pid), /health cheap + /health?full=1 OK (2 profiles, sales team, 10 ephemeral scripts, 2 cron flags), root served 96,964-byte HTML, /nope → 404, `--stop` clean (port closed, pidfile removed). **No live leaks** — 0 teamops-* profiles in live home afterwards.
+- [x] README: 13-tool surface, `teams dashboard/status/stop` quickstart + server.py module row, 70 tests.
+- [x] Moved stray `google.txt` (username-probe scratch) out of the repo to the scratch cache.
+- [x] Commit: 7a3c0c4 (see below; hash filled post-commit).
+
 
 ## 2026-11-09 2.8 — morning shift (Task 2.8 web dashboard + interactive mesh graph — DONE)
 - [x] **`teamops/dashboard.py`** — self-contained HTML fleet dashboard, zero external fetches (no CDN): summary cards (profiles, home crons, 24h executions, failed, dead-model count, cron flags); per-profile panel with memory bars (green/amber/red vs 2200-char cap), skills count, crons, 24h execution stats, per-job status chips; Cron911 cron-health table (SILENT GAP/failure/dead-model/disabled flags — degrades to a quiet "unavailable" line if the scan can't run); per-team kanban progress + **interactive SVG mesh graph** (circle layout, click a role to highlight its edges; inline vanilla JS).

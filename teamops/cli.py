@@ -78,6 +78,21 @@ def register_cli(subparser):
     p.add_argument("--home", default=None, help="Target HERMES_HOME")
     p.set_defaults(func=_cmd_sync)
 
+    p = sub.add_parser("dashboard", help="Start the LIVE dashboard server (mnemosyne-dashboard style)")
+    p.add_argument("--port", type=int, default=8781, help="Port (default 8781)")
+    p.add_argument("--no-open", action="store_true", help="Do not open a browser")
+    p.add_argument("--home", default=None, help="Target HERMES_HOME")
+    p.add_argument("--foreground", action="store_true", help="Keep the server in this terminal")
+    p.set_defaults(func=_cmd_dashboard)
+
+    p = sub.add_parser("dashboard-status", help="Is the live dashboard server running?")
+    p.add_argument("--home", default=None)
+    p.set_defaults(func=_cmd_dashboard_status)
+
+    p = sub.add_parser("dashboard-stop", help="Stop the live dashboard server")
+    p.add_argument("--home", default=None)
+    p.set_defaults(func=_cmd_dashboard_stop)
+
 
 def _print(data) -> int:
     if isinstance(data, str):
@@ -163,6 +178,27 @@ def _cmd_standup(args) -> int:
 
 def _cmd_sync(args) -> int:
     return _print(tools.mesh_sync(message=args.message, author=args.author, team=args.team, home=args.home))
+
+
+def _cmd_dashboard(args) -> int:
+    if args.foreground:
+        from . import server
+        home = tools._resolve_home_arg(args.home)
+        port = server.find_port(args.port)
+        print(json.dumps({"success": True, "url": f"http://127.0.0.1:{port}/",
+                          "foreground": True, "home": str(home)}, ensure_ascii=False))
+        server.serve(home, port=port, open_browser=not args.no_open).serve_forever()
+        return 0
+    return _print(tools.team_dashboard(home=args.home, port=args.port,
+                                       open_browser=not args.no_open))
+
+
+def _cmd_dashboard_status(args) -> int:
+    return _print(tools.team_dashboard_status(home=args.home))
+
+
+def _cmd_dashboard_stop(args) -> int:
+    return _print(tools.team_dashboard_stop(home=args.home))
 
 
 def teams_command(args):

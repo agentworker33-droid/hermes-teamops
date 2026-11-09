@@ -183,3 +183,39 @@ def mesh_sync(message: str, author: str = "teamops", team: str | None = None, ho
         return _ok(report)
     except Exception as e:  # noqa: BLE001
         return _err(f"mesh_sync failed: {e}")
+
+
+def team_dashboard(home: str | None = None, port: int = 8781, open_browser: bool = True) -> str:
+    """Start (or reuse) the LIVE dashboard server; data regenerates per request."""
+    try:
+        from . import server
+        home_p = _resolve_home_arg(home)
+        pid = server.running(home_p)
+        if pid:
+            return _ok({"url": f"http://127.0.0.1:{port}/", "started": False,
+                        "running": True, "pid": pid, "home": str(home_p),
+                        "note": "live dashboard already running"})
+        r = server.start_daemon(home_p, port, open_browser)
+        if r.get("ok"):
+            return _ok({"url": r.get("url"), "started": True, "running": True,
+                        "pid": r.get("pid"), "home": str(home_p),
+                        "note": "live dashboard — every open re-reads HERMES_HOME"})
+        return _err(r.get("error", "start failed"))
+    except Exception as e:  # noqa: BLE001
+        return _err(f"team_dashboard failed: {e}")
+
+
+def team_dashboard_status(home: str | None = None) -> str:
+    try:
+        from . import server
+        return _ok(server.status(_resolve_home_arg(home)))
+    except Exception as e:  # noqa: BLE001
+        return _err(f"team_dashboard_status failed: {e}")
+
+
+def team_dashboard_stop(home: str | None = None) -> str:
+    try:
+        from . import server
+        return _ok(server.stop(_resolve_home_arg(home)))
+    except Exception as e:  # noqa: BLE001
+        return _err(f"team_dashboard_stop failed: {e}")

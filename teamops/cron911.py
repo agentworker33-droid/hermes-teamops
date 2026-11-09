@@ -56,6 +56,42 @@ def _ts(s):
         return None
 
 
+_SEV_RANK = {"HIGH": 0, "MED": 1, "INFO": 2}
+
+
+def merge_issues(issues: list[dict]) -> list[dict]:
+    """Collapse multi-rule rows per (scope, job) into one row.
+
+    Cron911 fires one issue per rule (failure_streak, last_status, last_error,
+    DEAD MODEL, silent gap) — the same job can appear 3-4 times for the same
+    root cause. Merge to the highest severity and compose a compact detail
+    list (substring-duplicate detail strings are dropped first).
+    """
+    groups: dict[tuple[str, str], dict] = {}
+    for i in issues:
+        key = (str(i.get("scope", "")), str(i.get("job", "")))
+        g = groups.setdefault(key, {"severity": "INFO", "parts": []})
+        sev_cur = str(g["severity"] or "INFO")
+        sev_new = str(i.get("severity") or "INFO")
+        if _SEV_RANK.get(sev_new, 9) < _SEV_RANK.get(sev_cur, 9):
+            g["severity"] = sev_new
+        detail = i.get("detail") or ""
+        cap = 120 if ("last_error" in detail and "last_status" not in detail) else 200
+        g["parts"].append(detail[:cap])
+    out = []
+    for (scope, job), g in groups.items():
+        kept, seen = [], set()
+        for p in g["parts"]:
+            if any(p in s or s in p for s in seen):
+                continue
+            seen.add(p)
+            kept.append(p)
+        out.append({"severity": str(g["severity"] or "INFO"), "scope": scope, "job": job,
+                    "detail": " · ".join(kept)})
+    out.sort(key=lambda x: (_SEV_RANK.get(x["severity"], 9), x["scope"], x["job"]))
+    return out
+
+
 def _exec_last_run(db: Path, job_id: str) -> datetime | None:
     if not db.exists():
         return None
@@ -122,6 +158,7 @@ def scan(home: Path, days: int = 7, db_override: Path | None = None) -> dict:
             issues.append({"severity": "HIGH", "scope": scope, "job": name,
                            "detail": f"SILENT GAP: last run {last.strftime('%Y-%m-%d %H:%M')} "
                                      f"({age_h/24:.1f}d ago) but cadence={cadence} (expect <= {gap_h/24:.1f}d)"})
+    issues = merge_issues(issues)
     return {
         "checked_at": now.isoformat(),
         "home": str(home),

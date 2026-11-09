@@ -12,6 +12,9 @@ provides_tools:
   - model_scan
   - team_standup
   - mesh_sync
+  - team_dashboard
+  - team_dashboard_status
+  - team_dashboard_stop
 provides_hooks: []
 provides_middleware: []
 requires_hermes: ">=0.21.4"
