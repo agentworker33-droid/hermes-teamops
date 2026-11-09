@@ -14,7 +14,7 @@
 - [x] **Tests: +7 → 54 GREEN** (`tests/test_dashboard.py`): golden HTML markers from FakeHome, XSS escaping of job/detail/mesh content, bare-home degrade, team-filter filename, tool HTML path + custom out_path, headless `--html` no-crash.
 - [x] Gates: `hermes plugins validate teamops --install-deps` → "Validation passed"; `hermes plugins doctor teamops/` → OK (10 tools, 0 hooks). Smoke dashboard flagged a real SILENT GAP + drew 3-node mesh correctly.
 - [x] README updated (status --html quickstart, dashboard.py module row, 54 tests, cut list: mesh-graph-UI line removed — dashboard now ships it).
-- [ ] Post-commit: dress rehearsal (full demo on temp home incl. `status --html`) + suite re-run.
+- [x] Post-commit dress rehearsal: full `demo-90s.sh` on temp home → all 10 steps GREEN (deploy 11/0, verify 18/0/4, zombie-cron flagged, model-scan clean, factory fixture deploy, mesh sync, rollback 11/0); then **dashboard E2E on the real deployed temp home** → `status --html` wrote 16.6KB self-contained page (13 profiles, 2 teams sales+billing-agent, 6 cron flags, mesh SVG with click JS, no external resources); rollback GREEN; **live home verified 0 teamops-* profiles (no leaks)**; temp home removed. Suite re-run: 54 GREEN + validate passed (commit 806a4d1).
 
 
 ## 2026-11-08 D2.7 — night shift (Task 2.7 LIVE factory lane test — SUCCESS)
