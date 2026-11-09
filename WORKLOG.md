@@ -36,5 +36,11 @@
 - [x] Fixes over previous-shift D2 code: hidden-dir filter, modelguard profile-default dead models, cron_scan home dir-vs-jobs.json resolution + db_override, graph in fleet report
 - [x] Tests: tests/conftest FakeHome builder (real jobs.json/executions.db schema) + test_fleet/test_cron911/test_modelguard/test_standup/test_meshbridge — 42 total GREEN
 - [x] Verified all four Watch/Fix/Grow tools against LIVE read-only data (104 jobs scanned, 51 dead-model flags incl. LongCat 404s, standup digest computed)
-- [ ] Task 2.5: bundled skill (teamops/skills/SKILL.md), README update
 - [ ] Task 2.6: full 90s demo dress rehearsal on TEMP HERMES_HOME
+
+## 2026-11-08 D2 — evening shift (Task 2.5 + critical guard fix)
+- [x] Task 2.5: bundled skill teamops/skills/teamops/SKILL.md (when-to-use table + rules); README rewritten (install/quickstart/demo/tests/modules/cut list); demo script teamops/demo/demo-90s.sh + zombie-cron injector
+- [x] **CRITICAL FIX — home-isolation leak**: `hermes profile create` resolves profile root to the NATIVE home when HERMES_HOME sits inside ~/.hermes (our TMPDIR scratch) — first demo runs LEAKED 14 empty test profiles into the LIVE box. Cleaned via `hermes profile delete` (verified clean). Added preflight `home-isolation` check (FAIL when target home is a strict subdir of the default root) + regression test. Demo temp home now uses /tmp (outside ~/.hermes) with comment documenting why. Verified: profile create lands in temp home, NO leaks.
+- [x] CLI/--home plumbing: status/standup/sync now accept --home (README claimed it, parsers lacked it); tool schemas include home/team overrides
+- [x] Rollback output sanitized (single-line details, no raw hermes prompts in table)
+- [x] Tests: 43 GREEN (added home-isolation guard test)

@@ -122,11 +122,11 @@ def team_factory(spec: str, base: str | None = None, name: str | None = None,
         return _err(f"team_factory failed: {e}")
 
 
-def team_status(team: str | None = None) -> str:
+def team_status(team: str | None = None, home: str | None = None) -> str:
     """Fleet read: per-profile memory %, crons, executions, mesh edges."""
     try:
         from . import fleet
-        report = fleet.fleet_report(DEFAULT_HOME, team_filter=team)
+        report = fleet.fleet_report(Path(home) if home else DEFAULT_HOME, team_filter=team)
         return _ok(report)
     except Exception as e:  # noqa: BLE001
         return _err(f"team_status failed: {e}")
@@ -154,21 +154,21 @@ def model_scan(home: str | None = None) -> str:
         return _err(f"model_scan failed: {e}")
 
 
-def team_standup(team: str | None = None, hours: int = 24) -> str:
+def team_standup(team: str | None = None, hours: int = 24, home: str | None = None) -> str:
     """Morning digest: last-Nh cron outcomes per profile + open kanban work."""
     try:
         from . import standup
-        report = standup.digest(DEFAULT_HOME, team=team, hours=hours)
+        report = standup.digest(Path(home) if home else DEFAULT_HOME, team=team, hours=hours)
         return _ok(report)
     except Exception as e:  # noqa: BLE001
         return _err(f"team_standup failed: {e}")
 
 
-def mesh_sync(message: str, author: str = "teamops", team: str | None = None) -> str:
+def mesh_sync(message: str, author: str = "teamops", team: str | None = None, home: str | None = None) -> str:
     """Broadcast a decision to team MESH-MAP.md + shared Mnemosyne surface."""
     try:
         from . import meshbridge
-        report = meshbridge.sync(DEFAULT_HOME, message, author=author, team=team)
+        report = meshbridge.sync(Path(home) if home else DEFAULT_HOME, message, author=author, team=team)
         return _ok(report)
     except Exception as e:  # noqa: BLE001
         return _err(f"mesh_sync failed: {e}")

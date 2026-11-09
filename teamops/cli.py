@@ -50,6 +50,7 @@ def register_cli(subparser):
 
     p = sub.add_parser("status", help="Fleet status")
     p.add_argument("team", nargs="?", default=None, help="Optional team name filter")
+    p.add_argument("--home", default=None, help="Target HERMES_HOME")
     p.set_defaults(func=_cmd_status)
 
     p = sub.add_parser("cron-scan", help="Cron911 check: silent gaps + failures + dead models")
@@ -63,12 +64,14 @@ def register_cli(subparser):
     p = sub.add_parser("standup", help="Team standup digest")
     p.add_argument("--team", default=None, help="Team name filter")
     p.add_argument("--hours", type=int, default=24, help="Lookback hours (default 24)")
+    p.add_argument("--home", default=None, help="Target HERMES_HOME")
     p.set_defaults(func=_cmd_standup)
 
     p = sub.add_parser("sync", help="Broadcast a decision to all teams")
     p.add_argument("message", help="Decision/announcement to broadcast")
     p.add_argument("--author", default="teamops", help="Attribution label")
     p.add_argument("--team", default=None, help="Team filter")
+    p.add_argument("--home", default=None, help="Target HERMES_HOME")
     p.set_defaults(func=_cmd_sync)
 
 
@@ -131,7 +134,7 @@ def _cmd_factory(args) -> int:
 
 
 def _cmd_status(args) -> int:
-    return _print(tools.team_status(team=args.team))
+    return _print(tools.team_status(team=args.team, home=args.home))
 
 
 def _cmd_cron_scan(args) -> int:
@@ -143,11 +146,11 @@ def _cmd_model_scan(args) -> int:
 
 
 def _cmd_standup(args) -> int:
-    return _print(tools.team_standup(team=args.team, hours=args.hours))
+    return _print(tools.team_standup(team=args.team, hours=args.hours, home=args.home))
 
 
 def _cmd_sync(args) -> int:
-    return _print(tools.mesh_sync(message=args.message, author=args.author, team=args.team))
+    return _print(tools.mesh_sync(message=args.message, author=args.author, team=args.team, home=args.home))
 
 
 def teams_command(args):

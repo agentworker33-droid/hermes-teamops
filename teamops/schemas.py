@@ -59,6 +59,7 @@ _SCHEMA = {
             "type": "object",
             "properties": {
                 "team": {"type": "string", "description": "Optional team name filter"},
+                "home": {"type": "string", "description": "Optional HERMES_HOME override"},
             },
         },
     },
@@ -86,6 +87,7 @@ _SCHEMA = {
             "properties": {
                 "team": {"type": "string", "description": "Optional team name filter"},
                 "hours": {"type": "integer", "description": "Lookback hours (default 24)"},
+                "home": {"type": "string", "description": "Optional HERMES_HOME override"},
             },
         },
     },
@@ -97,6 +99,8 @@ _SCHEMA = {
             "properties": {
                 "message": {"type": "string", "description": "Decision/announcement to broadcast to every team"},
                 "author": {"type": "string", "description": "Attribution label (default 'teamops')"},
+                "team": {"type": "string", "description": "Optional team filter"},
+                "home": {"type": "string", "description": "Optional HERMES_HOME override"},
             },
         },
     },

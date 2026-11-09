@@ -74,7 +74,8 @@ class FakeRunner:
         return 0, "ok"
 
 
-def test_preflight_green_with_fake_runner(tmp_path, sales_bp):
+def test_preflight_green_with_fake_runner(tmp_path, sales_bp, monkeypatch):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))  # tmp_path IS the default root → isolation OK
     guard = DeployGuard(sales_bp, home=tmp_path)
     guard.runner = FakeRunner()
     results = guard.preflight()
@@ -85,7 +86,8 @@ def test_preflight_green_with_fake_runner(tmp_path, sales_bp):
     assert all(r.status != "FAIL" for r in results)
 
 
-def test_preflight_detects_profile_collision(tmp_path, sales_bp):
+def test_preflight_detects_profile_collision(tmp_path, sales_bp, monkeypatch):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     prof = tmp_path / "profiles" / "teamops-sales-boss"
     prof.mkdir(parents=True)
     guard = DeployGuard(sales_bp, home=tmp_path)
@@ -93,6 +95,21 @@ def test_preflight_detects_profile_collision(tmp_path, sales_bp):
     results = guard.preflight()
     by_name = {r.name: r.status for r in results}
     assert by_name["name-collision"] == "FAIL"
+
+
+def test_preflight_flags_home_inside_default_root(tmp_path, sales_bp, monkeypatch):
+    """A target home strictly inside the default hermes root must FAIL: hermes
+    profile create would resolve to the native home and leak test profiles."""
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    inside = tmp_path / "sub" / "home"
+    inside.mkdir(parents=True)
+    guard = DeployGuard(sales_bp, home=inside)
+    guard.runner = FakeRunner()
+    results = guard.preflight()
+    by_name = {r.name: r.status for r in results}
+    assert by_name["home-isolation"] == "FAIL"
+    detail = next(r.detail for r in results if r.name == "home-isolation")
+    assert "inside the default hermes root" in detail
 
 
 def test_deploy_dry_run_makes_no_calls(tmp_path, sales_bp):

@@ -125,6 +125,21 @@ class DeployGuard:
             self._add("name-collision", "FAIL", f"profiles already exist: {', '.join(collisions)}")
         else:
             self._add("name-collision", "PASS", "no teamops profile collisions")
+        # isolation: a target home strictly INSIDE the default hermes root is
+        # treated by `hermes` as "profile mode" — profile create would resolve to
+        # the native home and LEAK test profiles into the live box.
+        try:
+            default_root = Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes")).resolve()
+            target = self.home.resolve()
+            if target != default_root and default_root in target.parents:
+                self._add("home-isolation", "FAIL",
+                          f"target home {self.home} is inside the default hermes root "
+                          f"{default_root}; hermes profile create would resolve to the native "
+                          f"home. Use a directory OUTSIDE ~/.hermes for temp/test deploys.")
+            else:
+                self._add("home-isolation", "PASS", f"{self.home} resolves outside the default root")
+        except OSError:
+            self._add("home-isolation", "SKIP", "could not resolve home paths")
         return self.checks
 
     # -- 2. deploy -----------------------------------------------------------
@@ -307,14 +322,15 @@ class DeployGuard:
                 self._add(f"rollback-cron:{name}", "SKIP", "no job_id in snapshot (older deploy)")
                 continue
             code, out = self._cli(["-p", prof, "cron", "remove", job_id], timeout=120)
+            detail = " ".join((out or "").split())[:160] or "removed"
             if code == 0 or "does not exist" in out.lower():
-                self._add(f"rollback-cron:{name}", "PASS" if code == 0 else "SKIP",
-                          out.strip()[:160] or "removed")
+                self._add(f"rollback-cron:{name}", "PASS" if code == 0 else "SKIP", detail)
             else:
-                self._add(f"rollback-cron:{name}", "FAIL", out.strip()[:200])
+                self._add(f"rollback-cron:{name}", "FAIL", detail)
         for prof in snap.get("profiles", []):
             code, out = self._cli(["profile", "delete", "-y", prof], timeout=120)
-            self._add(f"rollback-profile:{prof}", "PASS" if code == 0 else "FAIL", out.strip()[:200] or "deleted")
+            detail = " ".join((out or "").split())[:160] or "deleted"
+            self._add(f"rollback-profile:{prof}", "PASS" if code == 0 else "FAIL", detail)
         for f in snap.get("shared", []):
             p = Path(f)
             if p.exists():
