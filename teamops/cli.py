@@ -61,9 +61,24 @@ def register_cli(subparser):
     p.add_argument("--home", default=None, help="Target HERMES_HOME")
     p.set_defaults(func=_cmd_cron_scan)
 
-    p = sub.add_parser("model-scan", help="Model Guard check: dead models + recommendations")
+    p = sub.add_parser("model-scan", help="Model Guard: dead models + recommendations (OPT-IN --swap)")
     p.add_argument("--home", default=None, help="Target HERMES_HOME")
+    p.add_argument("--swap", action="store_true",
+                   help="OPT-IN auto-swap mode: swap dead pinned models / scope defaults "
+                        "to the first fallback in the pool (dry-run unless --apply)")
+    p.add_argument("--pool", default=None,
+                   help="Comma-separated fallback pool, 'provider/model' entries "
+                        "(overrides config modelguard.fallback_pool)")
+    p.add_argument("--apply", action="store_true",
+                   help="With --swap: actually write the swaps (default is a dry-run plan; "
+                        "every swap is changelogged and revertible)")
     p.set_defaults(func=_cmd_model_scan)
+
+    p = sub.add_parser("model-rollback", help="Revert model-guard swaps from the changelog")
+    p.add_argument("--home", default=None, help="Target HERMES_HOME")
+    p.add_argument("--all", action="store_true",
+                   help="Revert every recorded swap (default: most recent only)")
+    p.set_defaults(func=_cmd_model_rollback)
 
     p = sub.add_parser("standup", help="Team standup digest")
     p.add_argument("--team", default=None, help="Team name filter")
@@ -169,7 +184,13 @@ def _cmd_cron_scan(args) -> int:
 
 
 def _cmd_model_scan(args) -> int:
-    return _print(tools.model_scan(home=args.home))
+    pool = [m.strip() for m in args.pool.split(",") if m.strip()] if args.pool else None
+    return _print(tools.model_scan(home=args.home, swap=args.swap, pool=pool,
+                                   dry_run=not args.apply))
+
+
+def _cmd_model_rollback(args) -> int:
+    return _print(tools.model_rollback(home=args.home, all_swaps=args.all))
 
 
 def _cmd_standup(args) -> int:
@@ -205,7 +226,7 @@ def teams_command(args):
     """Handler registered via ctx.register_cli_command (set_defaults(func=...))."""
     fn = getattr(args, "func", None)
     if fn is None:
-        print("Usage: hermes teams {list|deploy|verify|rollback|factory|status|cron-scan|model-scan|standup|sync}")
+        print("Usage: hermes teams {list|deploy|verify|rollback|factory|status|cron-scan|model-scan|model-rollback|standup|sync|dashboard|dashboard-status|dashboard-stop}")
         return 1
     return fn(args) or 0
 

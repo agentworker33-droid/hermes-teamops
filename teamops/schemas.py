@@ -79,7 +79,22 @@ _SCHEMA = {
         "toolset": "teamops",
         "schema": {
             "type": "object",
-            "properties": {},
+            "properties": {
+                "home": {"type": "string", "description": "Optional HERMES_HOME override"},
+                "swap": {"type": "boolean", "description": "OPT-IN auto-swap mode (default false = detect + recommend only)"},
+                "pool": {"type": "array", "items": {"type": "string"}, "description": "Fallback pool 'provider/model' entries (overrides config modelguard.fallback_pool)"},
+                "dry_run": {"type": "boolean", "description": "With swap=True: plan only, write nothing (default true)"},
+            },
+        },
+    },
+    "model_rollback": {
+        "toolset": "teamops",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "home": {"type": "string", "description": "Optional HERMES_HOME override"},
+                "all_swaps": {"type": "boolean", "description": "Revert every recorded swap (default: most recent only)"},
+            },
         },
     },
     "team_standup": {

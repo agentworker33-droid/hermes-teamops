@@ -391,9 +391,15 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(start_daemon(home, a.port, a.open)))
         return 0
 
-    port = find_port(a.port)
-    print(f"TeamOps dashboard: http://127.0.0.1:{port}/  (Ctrl+C to stop)", flush=True)
-    serve(home, port=port, open_browser=a.open).serve_forever()
+    # bind the EXACT requested port — never silently drift to a different one
+    # (a drifting port breaks the daemon health-check handshake)
+    try:
+        serve(home, port=a.port, open_browser=a.open).serve_forever()
+    except OSError as exc:
+        print(f"teamops-server: could not bind 127.0.0.1:{a.port} ({exc}) — "
+              "port in use? stop the other server first (hermes teams dashboard-stop)",
+              file=sys.stderr)
+        return 1
     return 0
 
 

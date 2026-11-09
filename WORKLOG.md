@@ -4,9 +4,20 @@
 > Order: D0 scaffold → D1 Build module → D2 Watch/Fix/Grow → D3 ship.
 
 ## Status
-- Phase: **D2 — Watch/Fix/Grow COMPLETE + Task 2.8 web dashboard DONE + LIVE dashboard server DONE (noon shift). Next: Task 2.9 auto model-swap (opt-in) — freeze Nov 10 7PM EST**
-- Next task: Task 2.9 auto model-swap (OPT-IN), then 2.10 port vertical blueprints, 2.11 VPS, 2.12 Twilio — then D3 ship
+- Phase: **D2 — Watch/Fix/Grow COMPLETE + 2.8 web dashboard + 2.8b live dashboard server + Task 2.9 auto model-swap (OPT-IN) DONE (noon shift). Next: Task 2.10 port vertical blueprints — freeze Nov 10 7PM EST**
+- Next task: Task 2.10 PORT existing vertical teams into blueprint format (insurance-claims, real-estate, trading), then 2.11 VPS, 2.12 Twilio — then D3 ship
 - Deadline: **Nov 11 2026 5PM EST**
+
+## 2026-11-09 12:00 — NOON shift (Task 2.9 auto model-swap OPT-IN — DONE)
+- [x] **Task 2.9: Model Guard `swap` mode (OPT-IN)** — `modelguard.swap(home, pool, dry_run=True)`: dead PINNED job models are swapped to the first *valid* pool fallback (jobs.json), dead UNPINNED jobs swap the scope's `model.default` in its config.yaml (home `config.yaml` or profile `config.yaml`; profiles with no config are skipped with a reason — never invented). Pool sources: plugin config `<home>/config/teamops.yaml` → `modelguard.fallback_pool`, or explicit `pool`/`--pool`. **Never invents models, never runs without a pool** — empty/missing pool → clean refusal `swap disabled — no fallback_pool configured` (acceptance rule: graceful degrade, zero nags).
+- [x] **Changelog + rollback**: every applied swap recorded in `<home>/plugin-data/teamops/model-swaps.json` (scope, job_id, from→to, ts). `modelguard.rollback(home, all_swaps=False)` reverts the most recent un-reverted swap (LIFO) or `--all` in reverse order; drift (current value no longer == what we wrote) is skipped, never clobbered; records flagged `reverted`.
+- [x] **Guardrails**: `valid_model()` regex (provider/model, no spaces); invalid pool entries filtered and reported (`invalid_pool`), never used; `changed` only written when a job actually matched (by id) and its model was the dead one; healthy jobs untouched; zero-swap applies no longer create an empty changelog file; JSON everywhere (changelog_path as str — fixed PosixPath serialization bug caught by tests).
+- [x] **Surface**: `model_scan` tool schema gains `swap`/`pool`/`dry_run`/`home`; new `model_rollback` tool (+ schemas) — **14 tools** total; plugin.yaml declares it; CLI `model-scan --swap [--pool a,b] [--apply]` + `model-rollback [--all]`.
+- [x] **Tests +20 → 90 GREEN** (`tests/test_modelguard_swap.py`): pool pick logic (current-skip/invalid/empty), valid_model regex, config read (missing/bad/valid), dry-run plan no-writes, apply pinned (jobs.json + changelog), apply scope default (config.yaml), profile-without-config skip, no-pool refusal w/ zero writes, config-pool fallback, invalid-entry filtering, rollback last + rollback --all (job+default), drift-skip, no-changelog benign, tool dry-run/apply, tool refusal, CLI apply-then-rollback (first pool entry wins).
+- [x] Gates: `hermes plugins validate teamops --install-deps` → "Validation passed" (declared tools match); `hermes plugins doctor teamops/` → OK **14 tools**, 0 hooks.
+- [x] **Live E2E on TEMP home `/tmp/teamops-swap`**: config pool picked up without --pool; dry-run plan 1 job + 1 default; `--apply` wrote both (jobs.json h1 → deepseek-v4-flash; config.yaml model.default → deepseek-v4-flash); `model-rollback` reverted the default (LIFO), changelog `reverted` flag set, drift 0; **no live leaks** (0 teamops-* profiles in live home). Temp home removed.
+- [x] README: 14-tool surface, `--swap/--pool/--apply` + rollback quickstart, modelguard module row, 90 tests, cut-list section now documents the opt-in swap contract. Commit: `(see git log)`.
+
 
 ## 2026-11-09 12:00 — NOON shift (finish in-progress live dashboard server work left uncommitted)
 - [x] **Finished uncommitted work found at shift start**: LIVE dashboard server (`teamops/server.py`, daemon + /health + stop + action dispatch), dashboard redesign (Mnemosyne-rail layout), cron911 multi-rule issue merging, fleet team enrichment + ephemeral-team inventory — code was green but never committed.

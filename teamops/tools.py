@@ -155,14 +155,40 @@ def cron_scan(jobs_path: str | None = None, db_path: str | None = None) -> str:
         return _err(f"cron_scan failed: {e}")
 
 
-def model_scan(home: str | None = None) -> str:
-    """Model Guard: dead/free-gone models + fallback recommendations."""
+def model_scan(home: str | None = None, swap: bool = False, pool: list[str] | None = None,
+               dry_run: bool = True) -> str:
+    """Model Guard: dead/free-gone models + fallback recommendations.
+
+    ``swap=False`` (default) is detect + recommend only. ``swap=True`` is the
+    OPT-IN auto-swap mode: with a fallback pool (config key
+    ``modelguard.fallback_pool`` in <home>/config/teamops.yaml, or the
+    ``pool`` argument) dead pinned models and scope defaults are swapped to the
+    first pool fallback. Dry-run by default; set ``dry_run=False`` to apply.
+    Never runs without a pool (refuses cleanly, feature disabled by design).
+    """
     try:
         from . import modelguard
-        report = modelguard.scan(Path(home) if home else DEFAULT_HOME)
-        return _ok(report)
+        home_p = Path(home) if home else DEFAULT_HOME
+        if not swap:
+            return _ok(modelguard.scan(home_p))
+        result = modelguard.swap(home_p, pool=pool, dry_run=dry_run)
+        if not result.get("ok"):
+            return _err(result.get("error", "swap failed"))
+        return _ok(result)
     except Exception as e:  # noqa: BLE001
         return _err(f"model_scan failed: {e}")
+
+
+def model_rollback(home: str | None = None, all_swaps: bool = False) -> str:
+    """Undo model-guard swaps from the changelog (most recent, or --all)."""
+    try:
+        from . import modelguard
+        result = modelguard.rollback(Path(home) if home else DEFAULT_HOME, all_swaps=all_swaps)
+        if not result.get("ok"):
+            return _err(result.get("error", "rollback failed"))
+        return _ok(result)
+    except Exception as e:  # noqa: BLE001
+        return _err(f"model_rollback failed: {e}")
 
 
 def team_standup(team: str | None = None, hours: int = 24, home: str | None = None) -> str:

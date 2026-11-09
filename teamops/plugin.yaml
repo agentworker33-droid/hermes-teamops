@@ -10,6 +10,7 @@ provides_tools:
   - team_status
   - cron_scan
   - model_scan
+  - model_rollback
   - team_standup
   - mesh_sync
   - team_dashboard
