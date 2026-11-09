@@ -17,8 +17,14 @@
 - [x] **E2E on TEMP HERMES_HOME (no live touches)**: deploy lawn-care-ops 9/0 GREEN → verify 14/0 GREEN → rollback 9/0 GREEN → temp home removed. **Live home untouched** (0 teamops-* profiles).
 - [x] **Model state**: ng-architect/ng-developer/ng-tech-lead pinned `deepseek/deepseek-v4-flash-0731` (nous) — lane ran with **0 dead-model flags** (model-scan confirms no ng-* flags; live home still reports the known pre-existing 51 trading LongCat 404s, out of repo scope, detect-only).
 - [x] Tests: +4 regression tests (space-safe extraction, disk handoff fallback, artifacts→blueprint converter incl. artifact = destination INBOX), **47 GREEN**.
-- [x] Commit: 4200003
+- [x] Commit: 538ff25 (canonical in HEAD history; the earlier hash 4200003 is a dangling rewritten copy — identical code, only the WORKLOG line differs)
 
+
+## 2026-11-09 B0 — overnight sweep (GREEN, metadata drift fixed)
+- [x] `python3 -m pytest -q` → **47 passed**; `hermes plugins doctor teamops/` → OK (10 tools, 0 hooks); `git status` clean at HEAD `e958fa0`.
+- [x] Fixed WORKLOG citation: D2.7's "Commit 4200003" is a dangling (non-ancestor) hash — the feature commit live in history is `538ff25` (same message; only WORKLOG.md differs between the two trees).
+- [x] Clarified blueprint count: `teams list` reports **3 first-class blueprints** (sales, property-mgmt, lawn-care-ops); the `billing-agent` fixture (own `team.yaml`) lives nested under `blueprints/fixtures/billing-agent/` — `blueprint_list` only scans top-level `team.yaml` dirs, so it's intentionally not a top-level blueprint; `teams list` is correct at 3. (count was 4 only if the fixture was counted.)
+- [x] No live profiles/crons touched (test-only posture held).
 
 ## 2026-11-08 D0 (live shift)
 - [x] Create repo skeleton (~/hermes-teamops, git init, .gitignore, README)
