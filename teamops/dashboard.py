@@ -367,7 +367,7 @@ _JS = """
     if (data && data.ok) {
       toast.classList.remove('err');
       if (data.needs_agent) {
-        if (toastMsg) toastMsg.textContent = 'AGENT ACTION — this one needs Hermes to think. Tell Hermes:\n\n' + (data.prompt || '');\n\n' + (data.prompt || '');
+        if (toastMsg) toastMsg.textContent = 'AGENT ACTION — this one needs Hermes to think. Tell Hermes:\n\n' + (data.prompt || '');
         if (toastCmd) toastCmd.textContent = data.prompt || '';
       } else {
         if (toastMsg) toastMsg.textContent = 'EXECUTED ✓\n\n' + (data.text || 'ok');
