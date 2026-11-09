@@ -5,3 +5,11 @@ __pycache__/
 .DS_Store
 .pytest_cache/
 WORKLOG.bak
+
+# secrets — never commit
+.env*
+*.pem
+*.key
+id_rsa
+id_ed25519
+vault*
