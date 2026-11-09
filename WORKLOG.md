@@ -7,6 +7,8 @@
 - Phase: **D2 — Watch/Fix/Grow COMPLETE (evening shift)**
 - Next task: D3 ship (catalog entry + PR, demo video, submission form) — buffer till Nov 11 5PM EST
 - Deadline: **Nov 11 2026 5PM EST**
+- [ ] Task 2.7 (QUEUED 2026-11-08 by boss-live): LIVE factory lane test — ng-architect/ng-developer/ng-tech-lead re-pinned to deepseek/deepseek-v4-flash-0731 (probes OK). Run `~/agentic-coding-team.sh --lane agent-factory "<small spec e.g. '3-agent lawn-care ops team'>"`; REQUIRE Validator output + blueprint dir materialized; run `python3 -m teamops.cli teams list` to show the new blueprint; record timing + any dead-model flags; do NOT touch live profiles (temp home only for any deploy step); commit result + WORKLOG note. Purpose: prove the demo act-2 'real generated team' wow path works live.
+
 
 ## 2026-11-08 D0 (live shift)
 - [x] Create repo skeleton (~/hermes-teamops, git init, .gitignore, README)
