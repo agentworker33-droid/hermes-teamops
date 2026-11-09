@@ -16,7 +16,8 @@
 - [x] **Tests +20 → 90 GREEN** (`tests/test_modelguard_swap.py`): pool pick logic (current-skip/invalid/empty), valid_model regex, config read (missing/bad/valid), dry-run plan no-writes, apply pinned (jobs.json + changelog), apply scope default (config.yaml), profile-without-config skip, no-pool refusal w/ zero writes, config-pool fallback, invalid-entry filtering, rollback last + rollback --all (job+default), drift-skip, no-changelog benign, tool dry-run/apply, tool refusal, CLI apply-then-rollback (first pool entry wins).
 - [x] Gates: `hermes plugins validate teamops --install-deps` → "Validation passed" (declared tools match); `hermes plugins doctor teamops/` → OK **14 tools**, 0 hooks.
 - [x] **Live E2E on TEMP home `/tmp/teamops-swap`**: config pool picked up without --pool; dry-run plan 1 job + 1 default; `--apply` wrote both (jobs.json h1 → deepseek-v4-flash; config.yaml model.default → deepseek-v4-flash); `model-rollback` reverted the default (LIFO), changelog `reverted` flag set, drift 0; **no live leaks** (0 teamops-* profiles in live home). Temp home removed.
-- [x] README: 14-tool surface, `--swap/--pool/--apply` + rollback quickstart, modelguard module row, 90 tests, cut-list section now documents the opt-in swap contract. Commit: `(see git log)`.
+- [x] README: 14-tool surface, `--swap/--pool/--apply` + rollback quickstart, modelguard module row, 90 tests, cut-list section now documents the opt-in swap contract. Commit: **b39b408**.
+- [x] Post-2.9 note: an out-of-band edit after the 2.9 commit corrupted `dashboard.py` (duplicated `+ (data.prompt || '')` in the inline toast JS → syntax error in shipped HTML) and improved `server.py` (bind exact port, no drift). Reverted the dashboard corruption to 655d6ae state, kept the server fix — commit **2e3ddb4**.
 
 
 ## 2026-11-09 12:00 — NOON shift (finish in-progress live dashboard server work left uncommitted)
