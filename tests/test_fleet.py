@@ -1,4 +1,5 @@
 """Fleet reads: profile_dirs, jobs, executions, memory, mesh (D2)."""
+import json
 from datetime import datetime, timedelta, timezone
 
 from teamops import fleet
@@ -16,14 +17,18 @@ def _job(jid: str, name: str, **kw) -> dict:
     return base
 
 
-def test_profile_dirs_skips_hidden(tmp_path):
+def test_profile_dirs_skips_hidden_and_workspaces(tmp_path):
     home = tmp_path / "home"
-    (home / "profiles" / "boss").mkdir(parents=True)
+    (home / "profiles" / "boss" / "memories").mkdir(parents=True)
     (home / "profiles" / ".deleted").mkdir(parents=True)
-    (home / "profiles" / "default").mkdir(parents=True)
+    (home / "profiles" / "default" / "memories").mkdir(parents=True)
+    # workspace dirs that look like profiles but are not agents
+    (home / "profiles" / "trading-desk" / "state").mkdir(parents=True)
+    (home / "profiles" / "prospect-team" / "replies").mkdir(parents=True)
     names = [p.name for p in fleet.profile_dirs(home)]
     assert "boss" in names and "default" in names
     assert ".deleted" not in names
+    assert "trading-desk" not in names and "prospect-team" not in names
 
 
 def test_all_jobs_includes_profile_scopes(tmp_path):
@@ -48,6 +53,8 @@ def test_execution_stats_counts_recent_and_failures(tmp_path):
     assert stats["ok"] == 2
     assert stats["failed"] == 1
     assert stats["recent"] == 2
+    assert stats["recent_ok"] == 1
+    assert stats["recent_failed"] == 1
 
 
 def test_memory_usage_reports_pct_and_skills(tmp_path):
@@ -99,6 +106,30 @@ def test_parse_mesh_edges_from_markdown_table():
     assert via == {"daily-push"}
 
 
+def test_parse_mesh_edges_headings_and_no_prose():
+    text = (
+        "### Researcher → PM\n"
+        "### Risk Manager → PM\n"
+        "### Executor → PM (fill feedback)\n"
+        "Topology: User → Architect Agent → Tech Lead Agent.\n"
+        "Every artifact is traceable: task → spec → plan.\n"
+        "Reflection does (generate → critique → revise, max 3 rounds).\n"
+        "| E3 | Architect → Tech Lead | handoff/arch_spec.json |\n"
+    )
+    edges = fleet.parse_mesh_edges(text)
+    pairs = {(e["from"], e["to"]) for e in edges}
+    # heading edges keep the full source name, not the last token
+    assert ("Researcher", "PM") in pairs
+    assert ("Risk Manager", "PM") in pairs
+    assert ("Executor", "PM") in pairs
+    # multi-word table targets are kept whole
+    assert ("Architect", "Tech Lead") in pairs
+    # prose arrows are ignored
+    assert "User" not in {f for f, _ in pairs}
+    assert "generate" not in {f for f, _ in pairs}
+    assert "task" not in {f for f, _ in pairs}
+
+
 def test_mesh_map_includes_root_level_team_dirs(tmp_path):
     home = tmp_path / "home"
     teams = home / "teams"
@@ -112,6 +143,46 @@ def test_mesh_map_includes_root_level_team_dirs(tmp_path):
     assert m["trading-desk"]["mesh"]["edges"][0]["from"] == "pm"
     # pure profile/config dirs are not teams
     assert "profiles" not in m
+
+
+def test_enrich_teams_uses_manifest_members_for_cross_stem_teams(tmp_path):
+    home = tmp_path / "home"
+    teams_dir = home / "teams"
+    (teams_dir / "sales").mkdir(parents=True)
+    (teams_dir / "sales" / "MESH-MAP.md").write_text("# Sales Team — Mesh Map\n| E1 | boss → sales-dev | daily-push |\n")
+    (teams_dir / "sales" / "team.json").write_text(
+        json.dumps({"label": "Sales & Growth Team",
+                    "hub": "boss",
+                    "members": ["boss", "sales-dev", "finance-analyst"]}))
+    (home / "profiles" / "boss" / "memories").mkdir(parents=True)
+    (home / "profiles" / "sales-dev" / "cron").mkdir(parents=True)
+    (home / "profiles" / "finance-analyst" / "memories").mkdir(parents=True)
+    (home / "profiles" / "trading-pm" / "cron").mkdir(parents=True)
+    (home / "profiles" / "trading-executor" / "cron").mkdir(parents=True)
+    profiles = [
+        {"name": "boss", "crons": 1, "executions_24h": {"total": 2, "ok": 2, "failed": 0,
+         "recent": 1, "recent_ok": 1, "recent_failed": 0}, "memory": {"memory_pct": 10.0, "skills": 3}},
+        {"name": "sales-dev", "crons": 2, "executions_24h": {"total": 1, "ok": 1, "failed": 0,
+         "recent": 1, "recent_ok": 1, "recent_failed": 0}, "memory": {"memory_pct": 20.0, "skills": 1}},
+        {"name": "finance-analyst", "crons": 1, "executions_24h": {"total": 3, "ok": 2, "failed": 1,
+         "recent": 2, "recent_ok": 1, "recent_failed": 1}, "memory": {"memory_pct": 30.0, "skills": 4}},
+        {"name": "trading-pm", "crons": 2, "executions_24h": {"total": 2, "ok": 2, "failed": 0,
+         "recent": 2, "recent_ok": 2, "recent_failed": 0}, "memory": {"memory_pct": 40.0, "skills": 2}},
+        {"name": "trading-executor", "crons": 1, "executions_24h": {"total": 1, "ok": 1, "failed": 0,
+         "recent": 1, "recent_ok": 1, "recent_failed": 0}, "memory": {"memory_pct": 50.0, "skills": 2}},
+    ]
+    teams = fleet.mesh_map(home)
+    out = fleet.enrich_teams(teams, profiles)
+    # sales: explicit manifest roster wins over stem-grouping
+    assert set(out["sales"]["members"]) == {"boss", "sales-dev", "finance-analyst"}
+    assert out["sales"]["label"] == "Sales & Growth Team"
+    assert out["sales"]["hub"] == "boss"
+    assert out["sales"]["stats"]["members"] == 3
+    assert out["sales"]["stats"]["exec_24h"]["failed"] == 1  # recent_failed
+    # trading stem group still forms from the remaining profiles
+    assert set(out["trading"]["members"]) == {"trading-pm", "trading-executor"}
+    # manifest members are not double-counted in synthetic groups
+    assert "sales" not in out.get("sales-dev", {})
 
 
 def test_enrich_teams_groups_profiles_and_adds_stem_groups():

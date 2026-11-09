@@ -362,48 +362,58 @@ _JS = """
     else if (toastCmd) { var r = document.createRange(); r.selectNode(toastCmd); window.getSelection().removeAllRanges(); window.getSelection().addRange(r); }
   }
   var toastMsg = document.getElementById('toast-msg');
+  var hostTimeout = null;
+  var actionRan = false;
+  function runLocal(action, payload, prompt) {
+    if (!action || actionRan) return;
+    actionRan = true;
+    fetch('/api/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: action, payload: payload }) })
+      .then(function (res) { return res.json(); })
+      .then(function (data) { showResult(data); })
+      .catch(function () {
+        setToast('COPIABLE PLAYBOOK — no live server here. Open the live view (hermes teams dashboard) to execute, or tell Hermes this:', prompt, true);
+      });
+  }
+  function setToast(msgText, cmdText, isErr) {
+    if (!toast) return;
+    if (isErr) { toast.classList.add('err'); } else { toast.classList.remove('err'); }
+    if (toastMsg) toastMsg.textContent = msgText || '';
+    if (toastCmd) toastCmd.textContent = cmdText || '';
+    toast.classList.add('on');
+  }
   function showResult(data) {
     if (!toast) return;
     if (data && data.ok) {
-      toast.classList.remove('err');
       if (data.needs_agent) {
-        if (toastMsg) toastMsg.textContent = 'AGENT ACTION — this one needs Hermes to think. Tell Hermes:\n\n' + (data.prompt || '');
-        if (toastCmd) toastCmd.textContent = data.prompt || '';
+        setToast('AGENT ACTION — this one needs Hermes to think. Tell Hermes:\\n\\n' + (data.prompt || ''), data.prompt || '', false);
       } else {
-        if (toastMsg) toastMsg.textContent = 'EXECUTED ✓\n\n' + (data.text || 'ok');
-        if (toastCmd) toastCmd.textContent = '';
+        setToast('EXECUTED OK\\n\\n' + (data.text || 'ok'), '', false);
       }
     } else {
-      toast.classList.add('err');
-      if (toastMsg) toastMsg.textContent = 'FAILED — ' + (data && data.error ? data.error : 'no response');
-      if (toastCmd) toastCmd.textContent = '';
+      setToast('FAILED — ' + (data && data.error ? data.error : 'no response'), '', true);
     }
-    toast.classList.add('on');
   }
   async function doAction(action, payload, prompt) {
     // 1) inside the Hermes app (widget): send the full playbook to the agent
     if (window.hermes && window.hermes.send) { window.hermes.send(prompt); return; }
-    // 2) live server: execute for real via /api/action
-    if (action) {
-      try {
-        var res = await fetch('/api/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: action, payload: payload }) });
-        var data = await res.json();
-        showResult(data);
-        if (window.parent && window.parent !== window) {
-          try { window.parent.postMessage({ source: 'teamops-dashboard', action: action, payload: payload, result: data, prompt: prompt }, '*'); } catch (e) {}
-        }
-        return;
-      } catch (err) { /* no live server here — fall through to host/toast */ }
-    }
-    // 3) desktop-app pane: hand it to the host app (plugin proxies to the server)
+    // 2) inside the desktop-app pane: hand it to the HOST app first. If the
+    //    host doesn't answer (stale/old plugin), execute DIRECTLY here —
+    //    same-origin to the local server, so buttons always work.
     if (window.parent && window.parent !== window) {
-      try { window.parent.postMessage({ source: 'teamops-dashboard', action: action, payload: payload, prompt: prompt }, '*'); } catch (e) {}
+      setToast('SENDING TO TEAMOPS HOST — waiting…', '', false);
+      clearTimeout(hostTimeout);
+      actionRan = false;
+      var promptForFallback = prompt;
+      hostTimeout = setTimeout(function () {
+        setToast('HOST DID NOT ANSWER — running directly…', '', false);
+        runLocal(action, payload, promptForFallback);
+      }, 8000);
+      try { window.parent.postMessage({ source: 'teamops-dashboard', action: action, payload: payload, prompt: prompt }, '*'); } catch (e) { runLocal(action, payload, promptForFallback); }
+      return;
     }
-    // 4) plain browser / static file: copyable prompt toast
-    toast.classList.remove('err');
-    if (toastMsg) toastMsg.textContent = 'COPIABLE PLAYBOOK — open the live view (hermes teams dashboard) to execute, or tell Hermes this:';
-    if (toastCmd) toastCmd.textContent = prompt;
-    toast.classList.add('on');
+    // 3) live browser view: execute when we have an action; else playbook toast
+    if (action) { runLocal(action, payload, prompt); return; }
+    setToast('COPIABLE PLAYBOOK — open the live view (hermes teams dashboard) to execute, or tell Hermes this:', prompt, false);
   }
   document.querySelectorAll('[data-hermes-send]').forEach(function (btn) {
     btn.addEventListener('click', function () {
@@ -415,9 +425,11 @@ _JS = """
     });
   });
   window.addEventListener('message', function (e) {
-    if (e.data && e.data.source === 'teamops-host') { showResult(e.data.result); }
-  });
-  var copyBtn = document.getElementById('toast-copy');
+    if (e.data && e.data.source === 'teamops-host') {
+      clearTimeout(hostTimeout);
+      showResult(e.data.result);
+    }
+  });  var copyBtn = document.getElementById('toast-copy');
   if (copyBtn) copyBtn.addEventListener('click', copyCmd);
   var closeBtn = document.getElementById('toast-close');
   if (closeBtn) closeBtn.addEventListener('click', function () { if (toast) toast.classList.remove('on'); });
@@ -701,6 +713,17 @@ def render_mesh_svg(team: str, entry: dict) -> str:
     members = entry.get("members") or []
     hub_override = entry.get("hub")
 
+    def _norm(value: object) -> str:
+        import re as _re
+        return _re.sub(r"[^a-z0-9]+", "-", str(value).lower()).strip("-")
+
+    def _match(a: str, b: str) -> bool:
+        """Fuzzy role↔member match: 'tech lead' == 'ng-tech-lead', 'pm' ==
+        'trading-pm'. Both directions so handoffs are found regardless of which
+        side uses the short role name."""
+        na, nb = _norm(a), _norm(b)
+        return bool(na and nb) and (na == nb or na in nb or nb in na)
+
     if mesh.get("parse_error"):
         return '<div class="empty">no mesh edges yet — document them in a MESH-MAP.md to draw the graph</div>'
 
@@ -757,7 +780,7 @@ def render_mesh_svg(team: str, entry: dict) -> str:
         via = ""
         for e in edges:
             f, t = str(e.get("from")), str(e.get("to"))
-            if (f == hub and t == name) or (f == name and t == hub):
+            if (_match(f, hub) and _match(t, name)) or (_match(f, name) and _match(t, hub)):
                 via = e.get("via") or ""
                 break
         parts.append(
@@ -838,14 +861,16 @@ def render_html(data: dict, title: str = "TeamOps Fleet Dashboard", build_id: st
     blueprints = data.get("blueprints", {}) or {}
     bp_list = blueprints.get("blueprints", []) or []
     tpl_list = [n for n in (blueprints.get("templates", []) or [])
-                if n not in ("job-cards", "local")]
+                if n not in ("job-cards", "local", "customer")]
     build = _esc(build_id or "local")
 
-    prof_24h = sum((p.get("executions_24h") or {}).get("total", 0) for p in profiles)
-    prof_fail = sum((p.get("executions_24h") or {}).get("failed", 0) for p in profiles)
+    # 24h buckets come from execution_stats' recent* counters; total/ok/failed
+    # are all-time and shown as such in the profile table.
+    prof_24h = sum((p.get("executions_24h") or {}).get("recent", 0) for p in profiles)
+    prof_fail = sum((p.get("executions_24h") or {}).get("recent_failed", 0) for p in profiles)
     home_exec = data.get("home_executions_24h") or {}
-    total_exec = prof_24h + home_exec.get("total", 0)
-    total_fail = prof_fail + home_exec.get("failed", 0)
+    total_exec = prof_24h + home_exec.get("recent", 0)
+    total_fail = prof_fail + home_exec.get("recent_failed", 0)
 
     issues = (cron or {}).get("issues", []) if cron else None
     dead_models = 0
@@ -905,8 +930,10 @@ def render_html(data: dict, title: str = "TeamOps Fleet Dashboard", build_id: st
             f"<td>{_mem_bar(mem.get('memory_pct'))}</td>"
             f"<td>{_esc(mem.get('skills', 0))} skill(s)</td>"
             f"<td>{_esc(p.get('crons', 0))}</td>"
-            f"<td>{_esc(execs.get('total', 0))} ({_esc(execs.get('ok', 0))} ok / "
-            f"<span style='color:#fff;font-weight:700'>{_esc(execs.get('failed', 0))} fail</span>)</td>"
+            f"<td>{_esc(execs.get('recent', 0))} in 24h "
+            f"({_esc(execs.get('recent_ok', 0))} ok / "
+            f"<span style='color:#fff;font-weight:700'>{_esc(execs.get('recent_failed', 0))} fail</span>)"
+            f"<br><span style='color:#6b6b74;font-size:11px'>{_esc(execs.get('total', 0))} all-time</span></td>"
             f"<td>{js or '<span class=empty>no crons</span>'}</td></tr>"
         )
     profiles_html = (
@@ -979,9 +1006,9 @@ def render_html(data: dict, title: str = "TeamOps Fleet Dashboard", build_id: st
                 rows.append(
                     f'<tr><td colspan="3" class="lane-group">{_esc(group)}</td></tr>'
                 )
-                for name, lane_roles, lane_desc in lanes:
+                for lane_name, lane_roles, lane_desc in lanes:
                     rows.append(
-                        f"<tr><td class='mono'>{_esc(name)}</td>"
+                        f"<tr><td class='mono'>{_esc(lane_name)}</td>"
                         f"<td>{_esc(lane_roles)}</td>"
                         f"<td>{_esc(lane_desc)}</td></tr>"
                     )
@@ -1018,13 +1045,14 @@ def render_html(data: dict, title: str = "TeamOps Fleet Dashboard", build_id: st
         list_btns.append(f'<h3 class="group">Deployed <span class="n">· {len(teams)}</span></h3>')
     for tname, t in sorted(teams.items()):
         name = _esc(tname)
+        disp = _esc(t.get("label") or tname)
         pill = '<span class="pill actv">ACTIVE</span>'
         badge = f"{len(t.get('members') or [])} MEMBERS" if t.get("members") else ("GROUP" if t.get("group") else "DIR")
         default_attr = ' data-default="1"' if not default_set else ""
         default_set = True
         list_btns.append(
             f'<button class="team-btn{default_attr}" data-team="{name}">'
-            f'<span class="tname">{name}</span>{pill}</button>'
+            f'<span class="tname">{disp}</span>{pill}</button>'
         )
         kan = t.get("kanban") or {}
         kanc = ""
@@ -1079,7 +1107,7 @@ def render_html(data: dict, title: str = "TeamOps Fleet Dashboard", build_id: st
                          else '<div class="empty">no scheduled crons — event-driven team</div>')
                       + "</div>")
         pane = (f'<div class="diagram-pane" data-team="{name}">'
-                f'<div class="pane-head"><h2>{name}</h2><div class="spacer"></div>{pill}'
+                f'<div class="pane-head"><h2>{disp}</h2><div class="spacer"></div>{pill}'
                 f'<span class="tb-badge">{_esc(badge)}</span></div>'
                 f'<div class="pane-sub">{_esc(sub)}</div>'
                 f"{kanc}{members_html}"

@@ -42,6 +42,21 @@ matching tools.
 5. **Honesty:** if a scan returns no issues, say healthy. If a tool errored,
    report the error verbatim rather than fabricating a clean result.
 
+## Data conventions (dashboard reads these)
+
+- A team under `$HERMES_HOME/teams/<name>/` (or a root-level team dir with a
+  mesh marker) appears in the Teams view. Members are attached by profile-stem
+  match (`trading-desk` covers `trading-*`) — for cross-stem teams add
+  `team.json` with an explicit roster: `{"label": "...", "hub": "<role>",
+  "members": ["a", "b", ...]}`. The hub is picked automatically if omitted.
+- Mesh edges are parsed from `MESH-MAP.md` tables (`| E1 | A → B | artifact |`),
+  ATX headings (`### A → B`), and mermaid lines. Prose that mentions arrows is
+  ignored. White pulses on the diagram = typed handoffs; put a word like
+  "handoff"/"Handoff (typed)" in the edge's artifact cell to draw one.
+- Profiles are agents only if they carry SOUL.md / memories / cron / skills /
+  config — workspace dirs under profiles/ (e.g. `trading-desk/state`) are
+  ignored, so they never appear as phantom team members.
+
 ## Fallbacks
 
 - `team_factory` may fall back to the pre-baked `billing-agent` fixture when

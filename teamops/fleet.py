@@ -15,11 +15,23 @@ from pathlib import Path
 MEMORY_CAP_CHARS = 2200  # matches the standard memory file cap shown in-session
 
 
+def _is_profile_dir(p: Path) -> bool:
+    """A real Hermes agent profile (soul, memory store, cron store, skills or
+    config) — not a workspace dir that happens to live under profiles/ (e.g.
+    trading-desk/state, prospect-team/replies)."""
+    if not p.is_dir():
+        return False
+    return ((p / "SOUL.md").is_file() or (p / "memories").is_dir()
+            or (p / "cron").is_dir() or (p / "skills").is_dir()
+            or (p / "config.yaml").is_file())
+
+
 def profile_dirs(home: Path) -> list[Path]:
     d = home / "profiles"
     if not d.is_dir():
         return []
-    return sorted(p for p in d.iterdir() if p.is_dir() and not p.name.startswith("."))
+    return sorted(p for p in d.iterdir()
+                  if not p.name.startswith(".") and _is_profile_dir(p))
 
 
 def jobs_path(home: Path) -> Path:
@@ -70,9 +82,14 @@ def executions_db_path(home: Path, scope: str) -> Path:
 
 
 def execution_stats(home: Path, scope: str, hours: int = 24) -> dict:
-    """Summarize executions for one scope from its executions.db."""
+    """Summarize executions for one scope from its executions.db.
+
+    total/ok/failed are ALL-TIME row counts; recent/recent_ok/recent_failed are
+    scoped to the last ``hours`` (dashboard shows the recent buckets as "24h").
+    """
     db = executions_db_path(home, scope)
-    stats = {"total": 0, "ok": 0, "failed": 0, "recent": 0}
+    stats = {"total": 0, "ok": 0, "failed": 0, "recent": 0,
+             "recent_ok": 0, "recent_failed": 0}
     if not db.exists():
         return stats
     try:
@@ -93,6 +110,10 @@ def execution_stats(home: Path, scope: str, hours: int = 24) -> dict:
             started = _ts(r["started_at"])
             if started and started >= cutoff:
                 stats["recent"] += 1
+                if st in ("completed", "ok", "success", "delivered"):
+                    stats["recent_ok"] += 1
+                elif st in ("failed", "error"):
+                    stats["recent_failed"] += 1
     except sqlite3.Error:
         pass
     finally:
@@ -126,14 +147,37 @@ def memory_usage(profile_dir: Path) -> dict:
 
 def _entry_from_dir(td: Path) -> dict:
     """Build a team entry from a directory: mesh.json → MESH-MAP.md edges,
-    kanban.json counts, MESH-MAP.md line count."""
+    kanban.json counts, MESH-MAP.md line count, optional team.json manifest
+    (explicit member roster + label + hub for cross-stem teams)."""
     entry = {"dir": td.name, "mesh": {}, "kanban": None, "mesh_map": None}
+    tm = td / "team.json"
+    if tm.exists():
+        try:
+            manifest = json.loads(tm.read_text())
+            if isinstance(manifest, dict):
+                if manifest.get("label"):
+                    entry["label"] = str(manifest["label"])
+                if isinstance(manifest.get("members"), list):
+                    entry["manifest_members"] = [str(m) for m in manifest["members"]]
+                if manifest.get("hub"):
+                    entry["hub"] = str(manifest["hub"])
+        except (json.JSONDecodeError, ValueError, OSError):
+            pass
     mm_doc = td / "MESH-MAP.md"
     if not mm_doc.exists():
         mm_doc = td / "config" / "mesh-map.md"
     if mm_doc.exists():
         try:
-            entry["mesh_map"] = {"lines": len(mm_doc.read_text(errors="ignore").splitlines())}
+            text = mm_doc.read_text(errors="ignore")
+            entry["mesh_map"] = {"lines": len(text.splitlines())}
+            # human label from the first heading, e.g. "# Agentic Coding Team — Mesh Map"
+            first = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+            if first.startswith("#"):
+                label = first.lstrip("# ").strip()
+                import re as _re
+                label = _re.sub(r"\s*[-—]\s*Mesh Map.*$", "", label).strip()
+                if label and "label" not in entry:
+                    entry["label"] = label
         except OSError:
             pass
     mj = td / "mesh.json"
@@ -160,33 +204,61 @@ def _entry_from_dir(td: Path) -> dict:
 
 
 def parse_mesh_edges(text: str) -> list[dict]:
-    """Parse markdown mesh-edge tables ('| E1 | From → To | artifact |') into
-    {from, to, via} edges. Also tolerates plain 'A --> B' mermaid lines."""
+    """Parse mesh edges from markdown into {from, to, via}.
+
+    Sources (in order): table rows ('| E1 | From → To | artifact |'), ATX
+    headings ('### From → To'), and simple single-token 'A --> B' mermaid
+    lines. Prose that merely mentions an arrow ('Topology: User → Architect',
+    'task → spec → plan') is ignored — only structured edge lines count.
+    """
     edges: list[dict] = []
     seen: set[tuple[str, str]] = set()
-    for raw in text.splitlines():
-        s = raw.strip()
-        cells = []
-        if s.startswith("|"):
-            cells = [c.strip() for c in s.strip("|").split("|")]
-        if len(cells) >= 2:
-            pair = cells[1]
-            via = cells[2] if len(cells) > 2 else ""
+
+    def _add(f: str, t: str, via: str, multiword_target: bool = False) -> None:
+        f = f.strip().strip("`").strip()
+        if multiword_target:
+            t = t.strip().strip("`,").strip()
         else:
-            pair = s
-            via = ""
+            t = t.strip().split()[0].strip("`,") if t.strip() else ""
+        via = via.strip().strip("`").strip()
+        if not f or not t or f == t:
+            return
+        key = (f, t)
+        if key not in seen:
+            seen.add(key)
+            edges.append({"from": f, "to": t, "via": via})
+
+    def _match(pair: str, via: str, multiword_target: bool = False) -> None:
         for arrow in ("-->", "->", "→"):
             if arrow in pair:
-                f, t = (x.strip() for x in pair.split(arrow, 1))
-                f = f.split()[-1].strip("`")
-                t = t.split()[0].strip("`,")
-                if not f or not t or f == t:
+                f, rest = (x.strip() for x in pair.split(arrow, 1))
+                _add(f, rest, via, multiword_target=multiword_target)
+                return
+
+    for raw in text.splitlines():
+        s = raw.strip()
+        if not s:
+            continue
+        if s.startswith("|"):
+            cells = [c.strip() for c in s.strip("|").split("|")]
+            if len(cells) >= 2:
+                _match(cells[1], cells[2] if len(cells) > 2 else "",
+                       multiword_target=True)
+            continue
+        if s.startswith("#"):
+            _match(s.lstrip("#").strip(), "")
+            continue
+        # plain line: mermaid-style 'A --> B' only (single-token source, no
+        # extra arrows) — anything else is prose, not an edge.
+        for arrow in ("-->", "->", "→"):
+            if arrow in s:
+                left, rest = s.split(arrow, 1)
+                left = left.strip()
+                if not left or any(ch.isspace() for ch in left) or ":" in left:
                     break
-                via = via.split("|")[0].strip("`")
-                key = (f, t)
-                if key not in seen:
-                    seen.add(key)
-                    edges.append({"from": f, "to": t, "via": via})
+                if arrow in rest:
+                    break
+                _add(left, rest, "")
                 break
     return edges
 
@@ -225,22 +297,29 @@ def enrich_teams(teams: dict, profiles: list[dict]) -> dict:
     """Attach member profiles + aggregate stats to team entries and append
     profile-prefix groups (war, strategy, fleet, ...) that have no dir/team.
 
-    A profile stem is covered by a team whose dir name starts with the stem
-    (trading-desk covers trading-*, soc-team covers soc-*). Groups with fewer
-    than 2 profiles are left out — they are roles, not teams.
+    A team dir may carry a team.json manifest with an EXPLICIT member roster
+    (use it for cross-stem teams like sales = boss + sales-dev + ...). Without
+    a manifest, a profile stem is covered by a team whose dir name starts with
+    the stem (trading-desk covers trading-*, soc-team covers soc-*). Groups
+    with fewer than 2 profiles are left out — they are roles, not teams.
     """
     out = {k: dict(v) for k, v in teams.items()}
+    profiles_by_name = {p["name"]: p for p in profiles}
+    handled: set[str] = set()
     by_stem: dict[str, list[dict]] = {}
     for p in profiles:
-        by_stem.setdefault(p["name"].split("-")[0], []).append(p)
+        if p["name"] not in handled:
+            by_stem.setdefault(p["name"].split("-")[0], []).append(p)
 
     def _stats(members: list[dict]) -> dict:
         crons = sum(m.get("crons", 0) for m in members)
         ex = {}
         for m in members:
             e = m.get("executions_24h") or {}
-            for k in ("total", "ok", "failed"):
-                ex[k] = ex.get(k, 0) + (e.get(k, 0) or 0)
+            e24 = e.get("recent")
+            ex["total"] = ex.get("total", 0) + (e24 if e24 is not None else e.get("total", 0) or 0)
+            ex["ok"] = ex.get("ok", 0) + (e.get("recent_ok") if e.get("recent_ok") is not None else e.get("ok", 0) or 0)
+            ex["failed"] = ex.get("failed", 0) + (e.get("recent_failed") if e.get("recent_failed") is not None else e.get("failed", 0) or 0)
         mems = [(m.get("memory") or {}).get("memory_pct") for m in members]
         mems = [x for x in mems if x is not None]
         return {"members": len(members), "crons": crons,
@@ -248,11 +327,22 @@ def enrich_teams(teams: dict, profiles: list[dict]) -> dict:
                 "skills": sum((m.get("memory") or {}).get("skills", 0) for m in members)}
 
     for tname, t in out.items():
+        manifest = t.get("manifest_members") or []
+        if manifest:
+            members = [m for m in manifest if m in profiles_by_name]
+            if members:
+                t["members"] = members
+                t["stats"] = _stats([profiles_by_name[m] for m in members])
+                handled.update(members)
+                continue
         stem = tname.split("-")[0]
         if stem in by_stem:
-            t["members"] = [p["name"] for p in by_stem[stem]]
-            t["stats"] = _stats(by_stem.pop(stem))
+            pool = by_stem.pop(stem)
+            t["members"] = [p["name"] for p in pool]
+            t["stats"] = _stats(pool)
+            handled.update(p["name"] for p in pool)
     for stem, members in sorted(by_stem.items()):
+        members = [m for m in members if m["name"] not in handled]
         if len(members) < 2:
             continue
         out.setdefault(stem, {"dir": None, "mesh": {}, "kanban": None, "mesh_map": None})
@@ -337,7 +427,7 @@ EPHEMERAL_TEAMS = [
      ["strategist", "writer-lane", "writer-lane", "critic", "distributor", "analytics"], "strategist"),
     ("agentic-coding-team.sh", "agentic-coding",
      "18-lane coding harness: architect → tech lead → developer with typed handoffs.",
-     ["architect", "tech-lead", "developer", "validator"], "architect"),
+     ["architect", "tech-lead", "developer"], "architect"),
     ("soc-team.sh", "soc-team",
      "Defensive security sweep: log analyst, threat hunter, hardening auditor, incident responder.",
      ["log-analyst", "threat-hunter", "hardening-auditor", "incident-responder", "orchestrator"], "orchestrator"),
@@ -351,13 +441,14 @@ EPHEMERAL_TEAMS = [
       "negotiation-drafter", "redline-manager"], "contract-reviewer"),
     ("strategy-lab.sh", "strategy-lab",
      "Trading research: cycle locator → ideator → real backtester → skeptic veto → reporter.",
-     ["cycle-locator", "strategy-ideator", "backtester", "skeptic", "reporter"], "cycle-locator"),
+     ["cycle-locator", "strategy-ideator", "strategy-backtester",
+      "strategy-skeptic", "strategy-reporter"], "cycle-locator"),
     ("war-room.sh", "war-room",
      "Decision committee: 5 voices in parallel, chair writes DECISION.md with kill-criteria.",
      ["analyst", "operator", "buyer", "risk", "skeptic", "chair"], "chair"),
     ("fleet-health.sh", "fleet-health",
-     "Health monitor: deterministic collector writes facts, one LLM seat writes the brief.",
-     ["collector", "report-seat", "deep-dive-seat"], "report-seat"),
+     "Health monitor: deterministic fleet-watch writes facts, the report seat writes the brief.",
+     ["fleet-watch", "fleet-report", "investigator"], "fleet-report"),
     ("prospect-team.sh", "prospect-team",
      "Prospect pipeline: find → qualify → write. Launched by the sales-dev cron on a schedule.",
      ["prospect-finder", "prospect-qualifier", "prospect-writer", "prospect-sequencer",
@@ -395,9 +486,9 @@ def _research_swarm_lanes(script_path: Path) -> tuple[list[str], int]:
                     continue
                 words = [w for w in lane.replace(":", " ").split() if w]
                 stem = "-".join(words[:2]).lower()
-                stem = _re.sub(r"[^a-z0-9-]+", "-", stem).strip("-")
+                stem = _re.sub(r"[^a-z0-9]+", "-", stem).strip("-")
                 stem = _re.sub(r"-{2,}", "-", stem)
-                slugs.append(stem[:26] or f"lane-{len(slugs) + 1}")
+                slugs.append(stem[:40] or f"lane-{len(slugs) + 1}")
     except OSError:
         pass
     if not slugs:
