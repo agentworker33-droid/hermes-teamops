@@ -27,3 +27,14 @@
 
 ## 2026-11-08 D1 — post-commit additions (rollback hardening)
 - [x] Snapshot-driven rollback removes crons by job_id and tolerates missing blueprint (fixtures) — verified in E2E (commit 79919ca)
+
+## 2026-11-08 D2 — evening shift (largest)
+- [x] Task 2.1: fleet.py — profile_dirs (hidden-dir filtered), jobs/executions/memory/mesh reads, fleet_report + mermaid graph; wired team_status tool + CLI
+- [x] Task 2.2: cron911.py cron_scan (silent gap via cadence gaps, failure_streak, last_status, delivery errors, never-ran, DEAD MODEL markers, DISABLED info) + modelguard.py model_scan (pinned + profile-default dead-model detect, recommend-only)
+- [x] Task 2.3: standup.py team_standup (last-24h outcomes per profile + open kanban counts)
+- [x] Task 2.4: meshbridge.py mesh_sync (append MESH-MAP.md author-attributed + shared-Mnemosyne outbox fallback)
+- [x] Fixes over previous-shift D2 code: hidden-dir filter, modelguard profile-default dead models, cron_scan home dir-vs-jobs.json resolution + db_override, graph in fleet report
+- [x] Tests: tests/conftest FakeHome builder (real jobs.json/executions.db schema) + test_fleet/test_cron911/test_modelguard/test_standup/test_meshbridge — 42 total GREEN
+- [x] Verified all four Watch/Fix/Grow tools against LIVE read-only data (104 jobs scanned, 51 dead-model flags incl. LongCat 404s, standup digest computed)
+- [ ] Task 2.5: bundled skill (teamops/skills/SKILL.md), README update
+- [ ] Task 2.6: full 90s demo dress rehearsal on TEMP HERMES_HOME

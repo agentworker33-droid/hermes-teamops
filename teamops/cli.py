@@ -52,17 +52,23 @@ def register_cli(subparser):
     p.add_argument("team", nargs="?", default=None, help="Optional team name filter")
     p.set_defaults(func=_cmd_status)
 
-    p = sub.add_parser("cron-scan", help="Cron911 check (D2)")
+    p = sub.add_parser("cron-scan", help="Cron911 check: silent gaps + failures + dead models")
+    p.add_argument("--home", default=None, help="Target HERMES_HOME")
     p.set_defaults(func=_cmd_cron_scan)
 
-    p = sub.add_parser("model-scan", help="Model Guard check (D2)")
+    p = sub.add_parser("model-scan", help="Model Guard check: dead models + recommendations")
+    p.add_argument("--home", default=None, help="Target HERMES_HOME")
     p.set_defaults(func=_cmd_model_scan)
 
-    p = sub.add_parser("standup", help="Team standup digest (D2)")
+    p = sub.add_parser("standup", help="Team standup digest")
+    p.add_argument("--team", default=None, help="Team name filter")
+    p.add_argument("--hours", type=int, default=24, help="Lookback hours (default 24)")
     p.set_defaults(func=_cmd_standup)
 
-    p = sub.add_parser("sync", help="Broadcast a decision to all teams (D2)")
+    p = sub.add_parser("sync", help="Broadcast a decision to all teams")
     p.add_argument("message", help="Decision/announcement to broadcast")
+    p.add_argument("--author", default="teamops", help="Attribution label")
+    p.add_argument("--team", default=None, help="Team filter")
     p.set_defaults(func=_cmd_sync)
 
 
@@ -129,19 +135,19 @@ def _cmd_status(args) -> int:
 
 
 def _cmd_cron_scan(args) -> int:
-    return _print(tools.cron_scan())
+    return _print(tools.cron_scan(jobs_path=args.home))
 
 
 def _cmd_model_scan(args) -> int:
-    return _print(tools.model_scan())
+    return _print(tools.model_scan(home=args.home))
 
 
 def _cmd_standup(args) -> int:
-    return _print(tools.team_standup())
+    return _print(tools.team_standup(team=args.team, hours=args.hours))
 
 
 def _cmd_sync(args) -> int:
-    return _print(tools.mesh_sync(message=args.message))
+    return _print(tools.mesh_sync(message=args.message, author=args.author, team=args.team))
 
 
 def teams_command(args):

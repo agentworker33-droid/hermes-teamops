@@ -48,6 +48,19 @@ def blueprint_list(path: str | None = None) -> str:
     return _ok({"blueprints": out, "count": len(out)})
 
 
+def _resolve_home_arg(arg: str | None) -> Path:
+    """Resolve a --home/jobs_path CLI arg: a directory is a HERMES_HOME,
+    a file is treated as jobs.json (its parent is the home)."""
+    if not arg:
+        return DEFAULT_HOME
+    p = Path(arg).expanduser()
+    if p.is_dir():
+        return p
+    if p.is_file():
+        return p.parent
+    return p
+
+
 def _resolve_blueprint_root(path: str | None) -> Path:
     if path:
         p = Path(path).expanduser()
@@ -110,26 +123,52 @@ def team_factory(spec: str, base: str | None = None, name: str | None = None,
 
 
 def team_status(team: str | None = None) -> str:
-    """Fleet read: enumerate profiles under HERMES_HOME/profiles."""
-    profiles_dir = DEFAULT_HOME / "profiles"
-    profiles = []
-    if profiles_dir.is_dir():
-        for p in sorted(profiles_dir.iterdir()):
-            if p.is_dir():
-                if team and team not in p.name:
-                    continue
-                cfg = p / "config.yaml"
-                profiles.append({"name": p.name, "has_config": cfg.exists()})
-    return _ok({"profiles": profiles, "count": len(profiles)})
+    """Fleet read: per-profile memory %, crons, executions, mesh edges."""
+    try:
+        from . import fleet
+        report = fleet.fleet_report(DEFAULT_HOME, team_filter=team)
+        return _ok(report)
+    except Exception as e:  # noqa: BLE001
+        return _err(f"team_status failed: {e}")
 
 
-def _stub(name: str):
-    def handler(**_) -> str:
-        return _err(f"{name}: not implemented yet (D2 build shift) — see WORKLOG.md")
-    return handler
+def cron_scan(jobs_path: str | None = None, db_path: str | None = None) -> str:
+    """Cron911: silent gaps + failures + dead models (detect-only)."""
+    try:
+        from . import cron911
+        home = _resolve_home_arg(jobs_path)
+        db_override = Path(db_path) if db_path else None
+        report = cron911.scan(home, db_override=db_override)
+        return _ok(report)
+    except Exception as e:  # noqa: BLE001
+        return _err(f"cron_scan failed: {e}")
 
 
-cron_scan = _stub("cron_scan")
-model_scan = _stub("model_scan")
-team_standup = _stub("team_standup")
-mesh_sync = _stub("mesh_sync")
+def model_scan(home: str | None = None) -> str:
+    """Model Guard: dead/free-gone models + fallback recommendations."""
+    try:
+        from . import modelguard
+        report = modelguard.scan(Path(home) if home else DEFAULT_HOME)
+        return _ok(report)
+    except Exception as e:  # noqa: BLE001
+        return _err(f"model_scan failed: {e}")
+
+
+def team_standup(team: str | None = None, hours: int = 24) -> str:
+    """Morning digest: last-Nh cron outcomes per profile + open kanban work."""
+    try:
+        from . import standup
+        report = standup.digest(DEFAULT_HOME, team=team, hours=hours)
+        return _ok(report)
+    except Exception as e:  # noqa: BLE001
+        return _err(f"team_standup failed: {e}")
+
+
+def mesh_sync(message: str, author: str = "teamops", team: str | None = None) -> str:
+    """Broadcast a decision to team MESH-MAP.md + shared Mnemosyne surface."""
+    try:
+        from . import meshbridge
+        report = meshbridge.sync(DEFAULT_HOME, message, author=author, team=team)
+        return _ok(report)
+    except Exception as e:  # noqa: BLE001
+        return _err(f"mesh_sync failed: {e}")
