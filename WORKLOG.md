@@ -69,3 +69,5 @@
 - [ ] Task 2.11: VPS provisioning module (OPTIONAL target) — `team_deploy --host user@host` optional SSH transport (scp blueprint + run remote install via ssh, preflight remote RAM/disk/python, remote smoke, rollback). Requires user-supplied SSH creds; clearly documented; keep local default. Tests: mock SSH runner.
 - [ ] Task 2.12: Twilio phone intake module — inbound call/SMS handler wiring (twilio webhook → transcribe → intent triage → structured card → agent follow-up), mock-twilio mode for tests/demo; REAL calls blocked until Dalton provides Twilio creds via vault (do not ask in chat). Tests: mock-only.
 - [ ] Freeze additions: **Nov 10 7PM EST** — after that only fixes; Nov 11 = PR final pin + video + form only.
+
+## ACCEPTANCE RULE (boss-live 2026-11-09, user-confirmed): every optional/external feature MUST degrade gracefully — absent creds/config (VPS SSH keys, Twilio creds, fallback model pool) → feature disabled/hidden, plugin remains 100% functional, zero nags, zero broken UI. No AutomatedAgents account is ever required. Enforce in Tasks 2.9/2.11/2.12 code + tests.
