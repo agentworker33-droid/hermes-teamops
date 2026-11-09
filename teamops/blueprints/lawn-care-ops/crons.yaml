@@ -1,0 +1,19 @@
+crons:
+- name: lawncare-co-dispatcher-daily-dispatch
+  schedule: 0 8 * * *
+  profile: dispatcher
+  prompt: 'As dispatcher, run the scheduled job ''lawncare-co-dispatcher-daily-dispatch'':
+    read your INBOX drop file, act on the items, and write your outputs per the MESH-MAP
+    edge contract.'
+- name: lawncare-co-field-agent-weekly-inspection
+  schedule: 0 9 * * 6
+  profile: field-agent
+  prompt: 'As field-agent, run the scheduled job ''lawncare-co-field-agent-weekly-inspection'':
+    read your INBOX drop file, act on the items, and write your outputs per the MESH-MAP
+    edge contract.'
+- name: lawncare-co-boss-morning-brief
+  schedule: 0 7 * * *
+  profile: boss
+  prompt: 'As boss, run the scheduled job ''lawncare-co-boss-morning-brief'': read
+    your INBOX drop file, act on the items, and write your outputs per the MESH-MAP
+    edge contract.'

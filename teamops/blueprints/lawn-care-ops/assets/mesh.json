@@ -1,0 +1,28 @@
+{
+  "version": "0.1",
+  "edges": [
+    {
+      "from": "dispatcher",
+      "to": "field-agent",
+      "via": "inbox-drop",
+      "artifact": "INBOX-field-agent.md"
+    },
+    {
+      "from": "field-agent",
+      "to": "boss",
+      "via": "inbox-drop",
+      "artifact": "INBOX-boss.md"
+    },
+    {
+      "from": "boss",
+      "to": "dispatcher",
+      "via": "inbox-drop",
+      "artifact": "INBOX-dispatcher.md"
+    }
+  ],
+  "shared_files": [
+    "INBOX-boss.md",
+    "INBOX-dispatcher.md",
+    "INBOX-field-agent.md"
+  ]
+}

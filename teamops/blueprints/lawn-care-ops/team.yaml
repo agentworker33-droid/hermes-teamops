@@ -1,0 +1,27 @@
+name: lawn-care-ops
+version: 0.1.0
+description: 'Implemented the 3-agent lawn-care ops team: onboard-lawn-care.sh (single-source
+  roster R1 dispatcher / R2 field-agent / R3 boss, PLAN_PRICE=350, --show-roster/--show-pricing
+  introspection, sandboxed d'
+roles:
+- name: dispatcher
+  title: Daily dispatch / work-order writer
+  soul: souls/dispatcher.md
+  toolsets:
+  - file
+  - terminal
+- name: field-agent
+  title: Weekly inspection / ops reports
+  soul: souls/field-agent.md
+  toolsets:
+  - file
+  - terminal
+- name: boss
+  title: Morning brief / oversight
+  soul: souls/boss.md
+  toolsets:
+  - file
+  - terminal
+shared:
+  kanban: assets/kanban.json
+  mesh: assets/mesh.json

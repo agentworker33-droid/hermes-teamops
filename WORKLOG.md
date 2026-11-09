@@ -4,10 +4,20 @@
 > Order: D0 scaffold → D1 Build module → D2 Watch/Fix/Grow → D3 ship.
 
 ## Status
-- Phase: **D2 — Watch/Fix/Grow COMPLETE (evening shift)**
+- Phase: **D2 — Watch/Fix/Grow COMPLETE (evening shift) + Task 2.7 LIVE factory lane PROVEN (night shift)**
 - Next task: D3 ship (catalog entry + PR, demo video, submission form) — buffer till Nov 11 5PM EST
 - Deadline: **Nov 11 2026 5PM EST**
-- [ ] Task 2.7 (QUEUED 2026-11-08 by boss-live): LIVE factory lane test — ng-architect/ng-developer/ng-tech-lead re-pinned to deepseek/deepseek-v4-flash-0731 (probes OK). Run `~/agentic-coding-team.sh --lane agent-factory "<small spec e.g. '3-agent lawn-care ops team'>"`; REQUIRE Validator output + blueprint dir materialized; run `python3 -m teamops.cli teams list` to show the new blueprint; record timing + any dead-model flags; do NOT touch live profiles (temp home only for any deploy step); commit result + WORKLOG note. Purpose: prove the demo act-2 'real generated team' wow path works live.
+
+## 2026-11-08 D2.7 — night shift (Task 2.7 LIVE factory lane test — SUCCESS)
+- [x] ✅ **Task 2.7: LIVE factory lane test** — `agentic-coding-team.sh run --auto --lane agent-factory "3-agent lawn-care ops team"` ran to completion: Spec-Architect 21:33 → Script-Builder 21:38 → Validator 21:45 (**total ~884s / 14.7 min**). Validator handoff `onboard-script.json`: full lane gate **15/15 PASS** (bash -n ×2, roster audit, pricing $350, cron audit ×3, phantom-agent, placeholder/DEV-MODE negatives N1–N7). Generated artifacts: onboard-lawn-care.sh, verify-lawn-care.sh, MESH-MAP.md (3 edges), INBOX-dispatcher/field-agent/boss, README.md.
+- [x] **Two real bugs found + fixed in the LIVE materialization path** (the D1 "fixture fallback" masked both):
+  1. `_extract_workspace` token-split on spaces → failed on task ids like "3-agent lawn-care ops team-…". Fixed: rest-of-line after `task workspace:`/`Done. Workspace:` marker + ANSI strip.
+  2. `blueprint_from_handoff` couldn't parse the real agent-factory schema (onboard-script.json has `files_created` absolute paths, no embedded team.yaml). Added `_blueprint_from_artifacts` converter → builds team.yaml (roles from roster), crons.yaml (from DRY_RUN_CRON dry-run lines), souls (from INBOX contract), assets/mesh.json (drop-file edges), assets/kanban.json, raw artifacts under assets/generated/. Plus `_find_handoff` disk fallback (searches ~/.hermes/ng-team/workspace new-newest, space-safe).
+- [x] **Materialized live-generated blueprint**: `teamops/blueprints/lawn-care-ops/` (dispatcher → field-agent → boss, crons lawncare-co-dispatcher-daily-dispatch `0 8 * * *` / field-agent-weekly-inspection `0 9 * * 6` / boss-morning-brief `0 7 * * *`). `python3 -m teamops.cli teams list` shows it (count: 4).
+- [x] **E2E on TEMP HERMES_HOME (no live touches)**: deploy lawn-care-ops 9/0 GREEN → verify 14/0 GREEN → rollback 9/0 GREEN → temp home removed. **Live home untouched** (0 teamops-* profiles).
+- [x] **Model state**: ng-architect/ng-developer/ng-tech-lead pinned `deepseek/deepseek-v4-flash-0731` (nous) — lane ran with **0 dead-model flags** (model-scan confirms no ng-* flags; live home still reports the known pre-existing 51 trading LongCat 404s, out of repo scope, detect-only).
+- [x] Tests: +4 regression tests (space-safe extraction, disk handoff fallback, artifacts→blueprint converter incl. artifact = destination INBOX), **47 GREEN**.
+- [x] Commit: 4200003
 
 
 ## 2026-11-08 D0 (live shift)
