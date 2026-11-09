@@ -4,8 +4,8 @@
 > Order: D0 scaffold → D1 Build module → D2 Watch/Fix/Grow → D3 ship.
 
 ## Status
-- Phase: **D1 — Build module COMPLETE (evening shift)**
-- Next task: D2 Watch/Fix/Grow (fleet status, Cron911, Model Guard, standup, mesh sync, bundled skill)
+- Phase: **D2 — Watch/Fix/Grow COMPLETE (evening shift)**
+- Next task: D3 ship (catalog entry + PR, demo video, submission form) — buffer till Nov 11 5PM EST
 - Deadline: **Nov 11 2026 5PM EST**
 
 ## 2026-11-08 D0 (live shift)
@@ -44,3 +44,7 @@
 - [x] CLI/--home plumbing: status/standup/sync now accept --home (README claimed it, parsers lacked it); tool schemas include home/team overrides
 - [x] Rollback output sanitized (single-line details, no raw hermes prompts in table)
 - [x] Tests: 43 GREEN (added home-isolation guard test)
+
+## 2026-11-08 D2 — evening shift (Task 2.6 dress rehearsal)
+- [x] Task 2.6: full 90s demo dress rehearsal run TWICE on temp HERMES_HOME (outside live home) — both GREEN end-to-end: doctor OK → list 2 blueprints → deploy sales (11/0) → verify (18/0/4) → status (6 profiles) → zombie cron injected → cron-scan flags SILENT GAP → model-scan clean → factory billing-agent --deploy (22/0) → standup → sync (2 mesh maps, author dalton) → rollback (11/0) → temp home removed. **NO leaks into live home** (verified after both runs).
+- [x] Verification gates pass: `hermes plugins validate teamops --install-deps` → "Validation passed" (all 16 checks incl. capability probe + security scan); `hermes plugins doctor <temp>/plugins/teamops` OK; `pytest` 43 GREEN
