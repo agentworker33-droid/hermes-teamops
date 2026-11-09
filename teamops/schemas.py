@@ -60,6 +60,8 @@ _SCHEMA = {
             "properties": {
                 "team": {"type": "string", "description": "Optional team name filter"},
                 "home": {"type": "string", "description": "Optional HERMES_HOME override"},
+                "html": {"type": "boolean", "description": "Write a self-contained dashboard HTML file (fleet panel + interactive mesh graph) and return its file path instead of the JSON report"},
+                "out_path": {"type": "string", "description": "Output path for html=True (default: <home>/teamops-dashboard.html)"},
             },
         },
     },

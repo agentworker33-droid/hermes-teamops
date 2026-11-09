@@ -48,9 +48,13 @@ def register_cli(subparser):
     p.add_argument("--home", default=None, help="Target HERMES_HOME")
     p.set_defaults(func=_cmd_factory)
 
-    p = sub.add_parser("status", help="Fleet status")
+    p = sub.add_parser("status", help="Fleet status (JSON or self-contained HTML dashboard)")
     p.add_argument("team", nargs="?", default=None, help="Optional team name filter")
     p.add_argument("--home", default=None, help="Target HERMES_HOME")
+    p.add_argument("--html", nargs="?", const="default", default=None, metavar="PATH",
+                   help="Write a self-contained dashboard HTML file (optionally PATH); opens in browser unless --no-open")
+    p.add_argument("--no-open", action="store_true",
+                   help="With --html: write the file but do not open a browser")
     p.set_defaults(func=_cmd_status)
 
     p = sub.add_parser("cron-scan", help="Cron911 check: silent gaps + failures + dead models")
@@ -134,6 +138,14 @@ def _cmd_factory(args) -> int:
 
 
 def _cmd_status(args) -> int:
+    if args.html is not None:
+        out_path = None if args.html == "default" else args.html
+        r = json.loads(tools.team_status(team=args.team, home=args.home,
+                                         html=True, out_path=out_path))
+        if r.get("success") and not args.no_open:
+            import webbrowser
+            webbrowser.open(r.get("html_path", ""))
+        return _print(r)
     return _print(tools.team_status(team=args.team, home=args.home))
 
 

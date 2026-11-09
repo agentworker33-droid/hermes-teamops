@@ -122,11 +122,22 @@ def team_factory(spec: str, base: str | None = None, name: str | None = None,
         return _err(f"team_factory failed: {e}")
 
 
-def team_status(team: str | None = None, home: str | None = None) -> str:
-    """Fleet read: per-profile memory %, crons, executions, mesh edges."""
+def team_status(team: str | None = None, home: str | None = None,
+                html: bool = False, out_path: str | None = None) -> str:
+    """Fleet read: per-profile memory %, crons, executions, mesh edges.
+
+    ``html=True`` writes a self-contained dashboard (fleet panel + interactive
+    mesh graph) and returns its file path instead of the JSON report.
+    """
     try:
         from . import fleet
-        report = fleet.fleet_report(Path(home) if home else DEFAULT_HOME, team_filter=team)
+        home_p = Path(home) if home else DEFAULT_HOME
+        if html:
+            from . import dashboard
+            return _ok(dashboard.write_dashboard(
+                home_p, team_filter=team,
+                out_path=Path(out_path) if out_path else None))
+        report = fleet.fleet_report(home_p, team_filter=team)
         return _ok(report)
     except Exception as e:  # noqa: BLE001
         return _err(f"team_status failed: {e}")

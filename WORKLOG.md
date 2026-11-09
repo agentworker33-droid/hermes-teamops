@@ -4,9 +4,18 @@
 > Order: D0 scaffold → D1 Build module → D2 Watch/Fix/Grow → D3 ship.
 
 ## Status
-- Phase: **D2 — Watch/Fix/Grow COMPLETE (evening shift) + Task 2.7 LIVE factory lane PROVEN (night shift)**
-- Next task: D3 ship (catalog entry + PR, demo video, submission form) — buffer till Nov 11 5PM EST
+- Phase: **D2 — Watch/Fix/Grow COMPLETE + Task 2.8 web dashboard DONE (morning shift). Next: Task 2.9 auto model-swap (opt-in) — freeze Nov 10 7PM EST**
+- Next task: Task 2.9 auto model-swap (OPT-IN), then 2.10 port vertical blueprints, 2.11 VPS, 2.12 Twilio — then D3 ship
 - Deadline: **Nov 11 2026 5PM EST**
+
+## 2026-11-09 2.8 — morning shift (Task 2.8 web dashboard + interactive mesh graph — DONE)
+- [x] **`teamops/dashboard.py`** — self-contained HTML fleet dashboard, zero external fetches (no CDN): summary cards (profiles, home crons, 24h executions, failed, dead-model count, cron flags); per-profile panel with memory bars (green/amber/red vs 2200-char cap), skills count, crons, 24h execution stats, per-job status chips; Cron911 cron-health table (SILENT GAP/failure/dead-model/disabled flags — degrades to a quiet "unavailable" line if the scan can't run); per-team kanban progress + **interactive SVG mesh graph** (circle layout, click a role to highlight its edges; inline vanilla JS).
+- [x] **Wiring**: `team_status` tool gains `html`/`out_path` params (schema synced); CLI `hermes teams status --html [PATH] [--no-open]` — opens in browser by default (headless-safe), both CLI and tool return the `html_path`; default file `<home>/teamops-dashboard.html` (team-filter variants get suffixed names).
+- [x] **Tests: +7 → 54 GREEN** (`tests/test_dashboard.py`): golden HTML markers from FakeHome, XSS escaping of job/detail/mesh content, bare-home degrade, team-filter filename, tool HTML path + custom out_path, headless `--html` no-crash.
+- [x] Gates: `hermes plugins validate teamops --install-deps` → "Validation passed"; `hermes plugins doctor teamops/` → OK (10 tools, 0 hooks). Smoke dashboard flagged a real SILENT GAP + drew 3-node mesh correctly.
+- [x] README updated (status --html quickstart, dashboard.py module row, 54 tests, cut list: mesh-graph-UI line removed — dashboard now ships it).
+- [ ] Post-commit: dress rehearsal (full demo on temp home incl. `status --html`) + suite re-run.
+
 
 ## 2026-11-08 D2.7 — night shift (Task 2.7 LIVE factory lane test — SUCCESS)
 - [x] ✅ **Task 2.7: LIVE factory lane test** — `agentic-coding-team.sh run --auto --lane agent-factory "3-agent lawn-care ops team"` ran to completion: Spec-Architect 21:33 → Script-Builder 21:38 → Validator 21:45 (**total ~884s / 14.7 min**). Validator handoff `onboard-script.json`: full lane gate **15/15 PASS** (bash -n ×2, roster audit, pricing $350, cron audit ×3, phantom-agent, placeholder/DEV-MODE negatives N1–N7). Generated artifacts: onboard-lawn-care.sh, verify-lawn-care.sh, MESH-MAP.md (3 edges), INBOX-dispatcher/field-agent/boss, README.md.

@@ -14,7 +14,7 @@ CLI: `hermes teams <command>`. Tool surface mirrors it: `blueprint_list`, `team_
 Plan: `~/.hermes/plans/2026-11-08_0450-hermes-teamops-plugin.md`
 Build worklog: `WORKLOG.md` (cron shifts append here after every task).
 
-Status: **D2 — Watch/Fix/Grow implemented + tested (42 tests). D3 ship path remaining (catalog PR, demo video, form).**
+Status: **D2 — Watch/Fix/Grow implemented + tested (54 tests) + Task 2.8 web dashboard (status --html, interactive mesh graph). D3 ship path remaining (catalog PR, demo video, form).**
 
 ## Install
 
@@ -40,6 +40,7 @@ hermes teams list                 # sales, property-mgmt
 hermes teams deploy sales         # profiles + SOULs + crons + kanban + mesh
 hermes teams verify sales         # Deploy Guard table, all PASS
 hermes teams status               # fleet panel: profiles, memory %, crons, mesh
+hermes teams status --html        # self-contained dashboard (opens in browser; --no-open to write only)
 hermes teams cron-scan            # Cron911: silent gaps + failures + dead models
 hermes teams model-scan           # Model Guard: dead models + fallback suggestions
 hermes teams standup              # last-24h digest + open kanban
@@ -72,6 +73,7 @@ used by the Agent Factory when the live lane is unavailable.
 | `guard.py` | Deploy Guard: preflight / deploy / smoke / rollback (local, not VPS) |
 | `factory.py` | Agent Factory wrapper (fixture fallback) |
 | `fleet.py` | fleet reads: profiles, jobs.json, executions.db, memory %, mesh |
+| `dashboard.py` | self-contained HTML dashboard (fleet panel, cron health, interactive SVG mesh graph; no CDN) |
 | `cron911.py` | silent-gap + failure + dead-model detection (detect-only) |
 | `modelguard.py` | dead-model detect + recommend (never auto-swaps) |
 | `standup.py` | last-24h digest generator |
@@ -84,12 +86,13 @@ used by the Agent Factory when the live lane is unavailable.
 python3 -m pytest -q
 ```
 
-42 tests: blueprint loader, Deploy Guard (mocked hermes), factory fallback,
-fleet/cron911/modelguard/standup/meshbridge against a fake HERMES_HOME built
-with the real jobs.json + executions.db schema.
+54 tests: blueprint loader, Deploy Guard (mocked hermes), factory fallback,
+fleet/cron911/modelguard/standup/meshbridge/dashboard against a fake HERMES_HOME
+built with the real jobs.json + executions.db schema.
 
 ## Cut list (NOT in v1)
 
-Desktop panel (CLI-first), Twilio/Tenant Line, VPS provisioning (that's the website
-product), mesh graph UI (v1 = text/mermaid), auto-swapping models (detect+recommend only),
+Desktop/Electron panel (CLI-first; `status --html` gives you a self-contained
+HTML dashboard), Twilio/Tenant Line, VPS provisioning (that's the website
+product), auto-swapping models (detect+recommend only),
 >2 baked blueprints (factory fixtures cover more), marketplace/payments.
