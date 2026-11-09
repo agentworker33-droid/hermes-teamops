@@ -17,7 +17,7 @@
 - [x] **Live smoke on TEMP home `/tmp/teamops-smoke`** (never live box): `python3 -m teamops.server --daemon` started (pid), /health cheap + /health?full=1 OK (2 profiles, sales team, 10 ephemeral scripts, 2 cron flags), root served 96,964-byte HTML, /nope → 404, `--stop` clean (port closed, pidfile removed). **No live leaks** — 0 teamops-* profiles in live home afterwards.
 - [x] README: 13-tool surface, `teams dashboard/status/stop` quickstart + server.py module row, 70 tests.
 - [x] Moved stray `google.txt` (username-probe scratch) out of the repo to the scratch cache.
-- [x] Commit: 7a3c0c4 (see below; hash filled post-commit).
+- [x] Commit: 655d6ae (live dashboard server + schemas fix + fleet/cron911 enrichment).
 
 
 ## 2026-11-09 2.8 — morning shift (Task 2.8 web dashboard + interactive mesh graph — DONE)
