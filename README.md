@@ -31,15 +31,19 @@ degrade). 160 tests. Next: D3 ship (PR, video, form).**
 ## Install
 
 ```bash
-# from a local checkout — point at the plugin package dir (holds plugin.yaml)
-hermes plugins install ~/hermes-teamops/teamops
+# from a public repo, pinned to a commit (catalog entry uses the same repo + subdir: teamops)
+hermes plugins install https://github.com/agentworker33-droid/hermes-teamops --ref <commit-sha> --force
 # or from the catalog once published (D3)
 hermes plugins install hermes-teamops
 ```
 
-Verify with the same checks the catalog CI runs. The catalog entry uses `subdir: teamops`,
-so run validate/doctor against the subdir (running them on the repo root fails with
-"no plugin.yaml" — the manifest lives in `teamops/`):
+Notes: the catalog entry installs subdir `teamops/` (that's where `plugin.yaml` lives), so
+point local runs at the subdir. The install scanner may ask for `--force` on a community
+plugin the first time (it flags test-file patterns like fake VPS host strings — review the
+findings, then override when you trust the source).
+
+Verify with the same checks the catalog CI runs (repo root FAILS validate with
+"no plugin.yaml" — the manifest is in `teamops/`):
 
 ```bash
 hermes plugins validate ~/hermes-teamops/teamops --install-deps
