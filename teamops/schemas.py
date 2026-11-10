@@ -159,6 +159,33 @@ _SCHEMA = {
             },
         },
     },
+    "phone_intake": {
+        "toolset": "teamops",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "payload": {"type": "object", "description": "Raw Twilio webhook form fields (MessageSid/CallSid, From, To, Body, CallStatus). The convenience fields below are merged in when absent."},
+                "channel": {"type": "string", "enum": ["sms", "call"], "description": "Inbound channel (default sms)"},
+                "from_number": {"type": "string", "description": "Caller's E.164 number"},
+                "to_number": {"type": "string", "description": "Twilio number messaged/called"},
+                "body": {"type": "string", "description": "SMS text body"},
+                "transcript": {"type": "string", "description": "Voice transcript (mock mode generates one for calls when omitted)"},
+                "call_status": {"type": "string", "description": "Twilio voice CallStatus (call channel)"},
+                "mock": {"type": "boolean", "description": "Force mock mode — always works with no credentials (default false = live, which requires TWILIO_ACCOUNT_SID/AUTH_TOKEN/PHONE_NUMBER in the user's env or <home>/config/twilio.env)"},
+                "home": {"type": "string", "description": "Optional HERMES_HOME override"},
+                "persist": {"type": "boolean", "description": "Write the structured card to the intake ledger <home>/plugin-data/teamops/intake/ (default true)"},
+            },
+        },
+    },
+    "twilio_status": {
+        "toolset": "teamops",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "home": {"type": "string", "description": "Optional HERMES_HOME override"},
+            },
+        },
+    },
 }
 
 SCHEMAS = _SCHEMA

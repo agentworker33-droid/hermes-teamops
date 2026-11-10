@@ -273,3 +273,45 @@ def team_dashboard_stop(home: str | None = None) -> str:
         return _ok(server.stop(_resolve_home_arg(home)))
     except Exception as e:  # noqa: BLE001
         return _err(f"team_dashboard_stop failed: {e}")
+
+
+def phone_intake(payload: dict | None = None, channel: str = "sms",
+                 from_number: str | None = None, to_number: str | None = None,
+                 body: str | None = None, transcript: str | None = None,
+                 call_status: str | None = None, mock: bool = False,
+                 home: str | None = None, persist: bool = True) -> str:
+    """Twilio phone intake: inbound SMS/call -> structured card (Task 2.12).
+
+    OPTIONAL feature, mock-first. Credentials are NEVER stored by the plugin —
+    they are read from the RUNNING USER's env or <home>/config/twilio.env
+    (TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_PHONE_NUMBER). Without
+    them the LIVE path is blocked and this returns a clean 'disabled' refusal;
+    mock=True always runs the pipeline (demos/tests). The structured card is
+    written to <home>/plugin-data/teamops/intake/ as the agent follow-up inbox.
+    """
+    try:
+        from . import twilio_intake as ti
+        home_p = Path(home) if home else DEFAULT_HOME
+        data = dict(payload or {})
+        for key, val in (("From", from_number), ("To", to_number),
+                         ("Body", body), ("CallStatus", call_status),
+                         ("channel", channel)):
+            if val is not None:
+                data.setdefault(key, val)
+        result = ti.handle_inbound(data, home=home_p, mock=mock,
+                                   transcript=transcript, persist=persist)
+        if not result.get("success"):
+            return _err(result.get("error", "twilio intake disabled"))
+        return _ok(result)
+    except Exception as e:  # noqa: BLE001
+        return _err(f"phone_intake failed: {e}")
+
+
+def twilio_status(home: str | None = None) -> str:
+    """Is Twilio intake configured? (reads YOUR env / <home>/config/twilio.env;
+    outputs masked values only — zero nags when disabled.)"""
+    try:
+        from . import twilio_intake as ti
+        return _ok(ti.status(Path(home) if home else DEFAULT_HOME))
+    except Exception as e:  # noqa: BLE001
+        return _err(f"twilio_status failed: {e}")

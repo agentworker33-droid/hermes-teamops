@@ -10,7 +10,7 @@ Build, run, watch, fix, and grow a multi-agent team — one plugin.
 CLI: `hermes teams <command>`. Tool surface mirrors it: `blueprint_list`, `team_deploy`,
 `team_verify`, `team_rollback`, `team_factory`, `team_status`, `cron_scan`, `model_scan`,
 `model_rollback`, `team_standup`, `mesh_sync`, `team_dashboard`, `team_dashboard_status`,
-`team_dashboard_stop`.
+`team_dashboard_stop`, `phone_intake`, `twilio_status`.
 
 Plan: `~/.hermes/plans/2026-11-08_0450-hermes-teamops-plugin.md`
 Build worklog: `WORKLOG.md` (cron shifts append here after every task).
@@ -22,8 +22,11 @@ Status: **D2 — Watch/Fix/Grow implemented + tested + Task 2.8 web dashboard
 2.10 ported vertical blueprints (`insurance-claims`, `real-estate`, `trading`
 — the shipped onboard-*.sh teams) + rollback empty-dir fix + Task 2.11 OPTIONAL
 VPS provisioning (`deploy/verify/rollback --host user@host[:port]` — remote
-transport over ssh using YOUR OWN credentials; graceful no-creds degrade).
-126 tests. Next: stretch 2.12 (Twilio), then D3 ship (PR, video, form).**
+transport over ssh using YOUR OWN credentials; graceful no-creds degrade) +
+Task 2.12 OPTIONAL Twilio phone intake (`phone-intake` / `twilio-status`,
+mock-first inbound SMS/call → triage card; real calls blocked until YOUR
+Twilio creds are in env / `<home>/config/twilio.env`; graceful no-creds
+degrade). 160 tests. Next: D3 ship (PR, video, form).**
 
 ## Install
 
@@ -67,7 +70,21 @@ hermes teams model-scan --swap --pool deepseek/deepseek-v4-flash-0731,nous/herme
 hermes teams model-rollback       # undo the most recent swap (--all for everything)
 hermes teams standup              # last-24h digest + open kanban
 hermes teams sync "use paper trading only" --author dalton   # MESH-MAP.md broadcast
+hermes teams phone-intake --mock --channel sms --body "The hvac is broken"   # Twilio intake (OPTIONAL, mock-first)
+hermes teams phone-intake --mock --channel call               # mock voice → auto transcript → card
+hermes teams phone-intake --channel sms --body "help"         # LIVE — clean refusal until YOU set creds
+hermes teams twilio-status                                   # enabled? masked output only
 hermes teams rollback sales       # undo the deploy
+
+# Twilio intake (OPTIONAL, mock-first): real inbound calls/SMS are BLOCKED
+# until you configure credentials from YOUR OWN environment — the plugin never
+# stores or ships them:
+#   export TWILIO_ACCOUNT_SID=... TWILIO_AUTH_TOKEN=... TWILIO_PHONE_NUMBER=...
+#   # or write <home>/config/twilio.env with those three keys
+# The pipeline: webhook payload → (transcribe) → intent triage → structured
+# card → agent follow-up ledger at <home>/plugin-data/teamops/intake/.
+# Without creds: phone-intake returns a clean 'disabled' refusal, mock=True
+# always works, and nothing else in the plugin is affected.
 ```
 
 Target-home override: every CLI command accepts `--home <dir>` (`cron-scan`,
@@ -106,6 +123,7 @@ fallback used by the Agent Factory when the live lane is unavailable.
 | `fleet.py` | fleet reads: profiles, jobs.json, executions.db, memory %, mesh; team grouping + ephemeral-team inventory |
 | `dashboard.py` | self-contained HTML dashboard (fleet panel, cron health, interactive SVG mesh graph; no CDN) |
 | `server.py` | LIVE dashboard server: fresh HTML per request, /health, daemonize, stop (mnemosyne-dashboard pattern) |
+| `twilio_intake.py` | OPTIONAL Twilio phone intake: webhook payload → transcribe → intent triage → structured card → agent follow-up ledger; creds read from YOUR env / `<home>/config/twilio.env` (never stored/shipped), mock-first, no-creds → clean disable |
 | `cron911.py` | silent-gap + failure + dead-model detection (detect-only; multi-rule rows merged) |
 | `modelguard.py` | dead-model detect + recommend; OPT-IN swap to a user-configured fallback pool (config `modelguard.fallback_pool`), changelog + rollback |
 | `standup.py` | last-24h digest generator |
@@ -118,24 +136,33 @@ fallback used by the Agent Factory when the live lane is unavailable.
 python3 -m pytest -q
 ```
 
-126 tests: blueprint loader (+ structural integrity for all 6 baked blueprints:
+160 tests: blueprint loader (+ structural integrity for all 6 baked blueprints:
 roles→souls, cron→role references, unique prefixed cron names, mesh→role edges,
 kanban assignees), Deploy Guard (mocked hermes), factory fallback,
 fleet/cron911/modelguard/standup/meshbridge/dashboard/server against a fake HERMES_HOME
 built with the real jobs.json + executions.db schema, VPS provisioning via a
 FAKE ssh runner (host parsing, remote preflight decisions, bundle upload,
-remote deploy/verify/rollback, graceful no-creds degrade), plus a
-manifest-coherence test pinning plugin.yaml ⇄ schemas ⇄ handlers and
-model-swap pool/rollback tests.
+remote deploy/verify/rollback, graceful no-creds degrade), Twilio intake
+config (env + dotenv source, masked output), payload parsing, intent triage,
+full mock pipeline + ledger, live-blocked-without-creds refusal, tool + CLI
+wiring, plus a manifest-coherence test pinning plugin.yaml ⇄ schemas ⇄ handlers
+and model-swap pool/rollback tests.
 
 ## Cut list (NOT in v1)
 
 Desktop/Electron panel (CLI-first; `status --html` gives you a self-contained
-HTML dashboard), Twilio/Tenant Line, marketplace/payments.
+HTML dashboard), marketplace/payments, Tenant Line (Twilio webhook + gateway
++ agent-boundary phone line stays the paid vertical).
 VPS provisioning IS in v1 as an OPTIONAL ssh transport (`--host`): it always
 uses the running user's own ssh credentials (agent / ~/.ssh / `--ssh-key` —
 never stored or shipped by the plugin) and degrades to a clean disable message
 when ssh/auth is absent; managed VPS delivery remains the paid website product.
+Twilio phone intake IS in v1 but mock-first and strictly OPTIONAL: real
+inbound calls/SMS are blocked until the user's own `TWILIO_ACCOUNT_SID` /
+`TWILIO_AUTH_TOKEN` / `TWILIO_PHONE_NUMBER` exist (env or
+`<home>/config/twilio.env`); no creds → clean 'disabled' refusal, `mock=True`
+always works, outputs are masked, and the plugin never stores or ships
+credentials.
 Auto model-swap IS in v1 but strictly OPT-IN: it only ever swaps to models the
 user listed in `modelguard.fallback_pool` (`<home>/config/teamops.yaml` or
 `--pool`) — no pool, no swap; every applied swap is changelogged and revertible

@@ -16,6 +16,8 @@ provides_tools:
   - team_dashboard
   - team_dashboard_status
   - team_dashboard_stop
+  - phone_intake
+  - twilio_status
 provides_hooks: []
 provides_middleware: []
 requires_hermes: ">=0.21.4"

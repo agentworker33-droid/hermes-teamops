@@ -122,6 +122,22 @@ def register_cli(subparser):
     p.add_argument("--home", default=None)
     p.set_defaults(func=_cmd_dashboard_stop)
 
+    p = sub.add_parser("phone-intake", help="Twilio phone intake: inbound SMS/call → triage card (OPTIONAL, mock-first)")
+    p.add_argument("--channel", choices=["sms", "call"], default="sms", help="Inbound channel (default sms)")
+    p.add_argument("--from", dest="from_number", default=None, help="Caller E.164 number")
+    p.add_argument("--to", dest="to_number", default=None, help="Twilio number messaged/called")
+    p.add_argument("--body", default=None, help="SMS text body")
+    p.add_argument("--transcript", default=None, help="Voice transcript (mock generates one for calls when omitted)")
+    p.add_argument("--call-status", default=None, help="Twilio voice CallStatus (call channel)")
+    p.add_argument("--mock", action="store_true", help="Force mock mode — no credentials needed")
+    p.add_argument("--no-persist", action="store_true", help="Do not write the ledger card")
+    p.add_argument("--home", default=None, help="Target HERMES_HOME")
+    p.set_defaults(func=_cmd_phone_intake)
+
+    p = sub.add_parser("twilio-status", help="Is Twilio intake configured? (reads YOUR env / <home>/config/twilio.env; masked output)")
+    p.add_argument("--home", default=None, help="Target HERMES_HOME")
+    p.set_defaults(func=_cmd_twilio_status)
+
 
 def _print(data) -> int:
     if isinstance(data, str):
@@ -242,11 +258,23 @@ def _cmd_dashboard_stop(args) -> int:
     return _print(tools.team_dashboard_stop(home=args.home))
 
 
+def _cmd_phone_intake(args) -> int:
+    return _print(tools.phone_intake(
+        channel=args.channel, from_number=args.from_number,
+        to_number=args.to_number, body=args.body, transcript=args.transcript,
+        call_status=args.call_status, mock=args.mock,
+        persist=not args.no_persist, home=args.home))
+
+
+def _cmd_twilio_status(args) -> int:
+    return _print(tools.twilio_status(home=args.home))
+
+
 def teams_command(args):
     """Handler registered via ctx.register_cli_command (set_defaults(func=...))."""
     fn = getattr(args, "func", None)
     if fn is None:
-        print("Usage: hermes teams {list|deploy|verify|rollback|factory|status|cron-scan|model-scan|model-rollback|standup|sync|dashboard|dashboard-status|dashboard-stop}")
+        print("Usage: hermes teams {list|deploy|verify|rollback|factory|status|cron-scan|model-scan|model-rollback|standup|sync|dashboard|dashboard-status|dashboard-stop|phone-intake|twilio-status}")
         return 1
     return fn(args) or 0
 
