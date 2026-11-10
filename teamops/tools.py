@@ -70,8 +70,22 @@ def _resolve_blueprint_root(path: str | None) -> Path:
 
 
 def team_deploy(name: str, prefix: str | None = None, dry_run: bool = False,
-                home: str | None = None, verify: bool = True) -> str:
+                home: str | None = None, verify: bool = True,
+                host: str | None = None, ssh_key: str | None = None,
+                remote_home: str | None = None) -> str:
+    """Deploy a blueprint — locally by default, or to a VPS via ssh with --host.
+
+    ``host`` is the OPTIONAL SSH transport (Task 2.11): ``user@host[:port]``.
+    Credentials come from the RUNNING USER's own ssh setup (agent / ~/.ssh or
+    ``ssh_key``); the plugin never stores or ships credentials. Missing ssh or
+    failed auth degrades to a clean FAIL check — local deploys are untouched.
+    """
     try:
+        if host:
+            from . import vps
+            return _ok(vps.VpsDeploy(
+                name, host, key=ssh_key, remote_home=remote_home,
+            ).deploy(dry_run=dry_run, verify=verify))
         result = build_mod.deploy_team(
             name, home=Path(home) if home else None, prefix=prefix, dry_run=dry_run,
             blueprints_root=_resolve_blueprint_root(None),
@@ -85,16 +99,30 @@ def team_deploy(name: str, prefix: str | None = None, dry_run: bool = False,
         return _err(f"team_deploy failed: {e}")
 
 
-def team_verify(name: str, home: str | None = None, blueprints_root: str | None = None) -> str:
+def team_verify(name: str, home: str | None = None, blueprints_root: str | None = None,
+                host: str | None = None, ssh_key: str | None = None,
+                remote_home: str | None = None) -> str:
     try:
+        if host:
+            from . import vps
+            return _ok(vps.VpsDeploy(
+                name, host, key=ssh_key, remote_home=remote_home,
+            ).verify())
         return _ok(build_mod.verify_team(name, home=Path(home) if home else None,
                                          blueprints_root=Path(blueprints_root) if blueprints_root else None))
     except Exception as e:  # noqa: BLE001
         return _err(f"team_verify failed: {e}")
 
 
-def team_rollback(name: str, home: str | None = None, blueprints_root: str | None = None) -> str:
+def team_rollback(name: str, home: str | None = None, blueprints_root: str | None = None,
+                  host: str | None = None, ssh_key: str | None = None,
+                  remote_home: str | None = None) -> str:
     try:
+        if host:
+            from . import vps
+            return _ok(vps.VpsDeploy(
+                name, host, key=ssh_key, remote_home=remote_home,
+            ).rollback())
         return _ok(build_mod.rollback_team(name, home=Path(home) if home else None,
                                            blueprints_root=Path(blueprints_root) if blueprints_root else None))
     except Exception as e:  # noqa: BLE001

@@ -20,9 +20,10 @@ Status: **D2 — Watch/Fix/Grow implemented + tested + Task 2.8 web dashboard
 (`teams dashboard`, daemon + /health + stop) + Task 2.9 OPT-IN auto model-swap
 (`model-scan --swap --pool a,b [--apply]`, changelog + `model-rollback`) + Task
 2.10 ported vertical blueprints (`insurance-claims`, `real-estate`, `trading`
-— the shipped onboard-*.sh teams) + rollback empty-dir fix.
-99 tests. Next: stretch 2.11–2.12 (VPS, Twilio) then D3 ship
-(PR, video, form).**
+— the shipped onboard-*.sh teams) + rollback empty-dir fix + Task 2.11 OPTIONAL
+VPS provisioning (`deploy/verify/rollback --host user@host[:port]` — remote
+transport over ssh using YOUR OWN credentials; graceful no-creds degrade).
+126 tests. Next: stretch 2.12 (Twilio), then D3 ship (PR, video, form).**
 
 ## Install
 
@@ -47,6 +48,12 @@ export HERMES_HOME=$(mktemp -d)   # scratch home for the demo
 hermes teams list                 # sales, property-mgmt
 hermes teams deploy sales         # profiles + SOULs + crons + kanban + mesh
 hermes teams verify sales         # Deploy Guard table, all PASS
+hermes teams deploy sales --host root@vps.example.com        # OPTIONAL: deploy REMOTELY over ssh
+hermes teams verify sales --host root@vps.example.com        # remote Deploy Guard smoke
+hermes teams rollback sales --host root@vps.example.com      # remote rollback
+                                  # (uses YOUR OWN ssh credentials — agent / ~/.ssh keys,
+                                  #  or --ssh-key ~/.ssh/id_ed25519; --remote-home to target
+                                  #  a custom HERMES_HOME on the host. No creds stored/shipped.)
 hermes teams status               # fleet panel: profiles, memory %, crons, mesh
 hermes teams status --html        # self-contained dashboard (opens in browser; --no-open to write only)
 hermes teams dashboard            # LIVE dashboard server (fresh data per request; daemon + /health)
@@ -94,6 +101,7 @@ fallback used by the Agent Factory when the live lane is unavailable.
 |---|---|
 | `build.py` | blueprint loader + deploy/verify/rollback orchestration |
 | `guard.py` | Deploy Guard: preflight / deploy / smoke / rollback (local, not VPS) |
+| `vps.py` | OPTIONAL VPS provisioning: deploy/verify/rollback `--host user@host[:port]` — remote preflight (python/disk/RAM/home), tar-stream bundle upload, remote driver `scripts/remote-driver.py`, staging cleanup; creds = the RUNNING USER's own ssh (agent/keys or `--ssh-key`), never stored; no ssh/auth → clean disable, locals untouched |
 | `factory.py` | Agent Factory wrapper (fixture fallback) |
 | `fleet.py` | fleet reads: profiles, jobs.json, executions.db, memory %, mesh; team grouping + ephemeral-team inventory |
 | `dashboard.py` | self-contained HTML dashboard (fleet panel, cron health, interactive SVG mesh graph; no CDN) |
@@ -110,18 +118,24 @@ fallback used by the Agent Factory when the live lane is unavailable.
 python3 -m pytest -q
 ```
 
-99 tests: blueprint loader (+ structural integrity for all 6 baked blueprints:
+126 tests: blueprint loader (+ structural integrity for all 6 baked blueprints:
 roles→souls, cron→role references, unique prefixed cron names, mesh→role edges,
 kanban assignees), Deploy Guard (mocked hermes), factory fallback,
 fleet/cron911/modelguard/standup/meshbridge/dashboard/server against a fake HERMES_HOME
-built with the real jobs.json + executions.db schema, plus a manifest-coherence
-test pinning plugin.yaml ⇄ schemas ⇄ handlers and model-swap pool/rollback tests.
+built with the real jobs.json + executions.db schema, VPS provisioning via a
+FAKE ssh runner (host parsing, remote preflight decisions, bundle upload,
+remote deploy/verify/rollback, graceful no-creds degrade), plus a
+manifest-coherence test pinning plugin.yaml ⇄ schemas ⇄ handlers and
+model-swap pool/rollback tests.
 
 ## Cut list (NOT in v1)
 
 Desktop/Electron panel (CLI-first; `status --html` gives you a self-contained
-HTML dashboard), Twilio/Tenant Line, VPS provisioning (that's the website
-product), >2 baked blueprints (factory fixtures cover more), marketplace/payments.
+HTML dashboard), Twilio/Tenant Line, marketplace/payments.
+VPS provisioning IS in v1 as an OPTIONAL ssh transport (`--host`): it always
+uses the running user's own ssh credentials (agent / ~/.ssh / `--ssh-key` —
+never stored or shipped by the plugin) and degrades to a clean disable message
+when ssh/auth is absent; managed VPS delivery remains the paid website product.
 Auto model-swap IS in v1 but strictly OPT-IN: it only ever swaps to models the
 user listed in `modelguard.fallback_pool` (`<home>/config/teamops.yaml` or
 `--pool`) — no pool, no swap; every applied swap is changelogged and revertible

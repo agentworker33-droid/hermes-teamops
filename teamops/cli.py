@@ -20,23 +20,37 @@ def register_cli(subparser):
     p.add_argument("--path", default=None, help="Optional blueprint root dir")
     p.set_defaults(func=_cmd_list)
 
-    p = sub.add_parser("deploy", help="Deploy a blueprint locally")
+    p = sub.add_parser("deploy", help="Deploy a blueprint (local default, or remote VPS with --host)")
     p.add_argument("name", help="Blueprint name, e.g. 'sales'")
     p.add_argument("--prefix", default=None, help="Profile name prefix")
     p.add_argument("--dry-run", action="store_true", help="Print plan without creating anything")
     p.add_argument("--home", default=None, help="Target HERMES_HOME (default: $HERMES_HOME or ~/.hermes)")
     p.add_argument("--no-verify", action="store_true", help="Skip Deploy Guard verify after deploy")
+    p.add_argument("--host", default=None,
+                   help="Optional VPS target 'user@host[:port]' — deploy REMOTELY over ssh "
+                        "using YOUR OWN ssh credentials (agent / ~/.ssh keys, or --ssh-key). "
+                        "Omit for the default local deploy.")
+    p.add_argument("--ssh-key", default=None,
+                   help="With --host: path to your own ssh private key (default: ssh-agent / ~/.ssh defaults)")
+    p.add_argument("--remote-home", default=None,
+                   help="With --host: remote HERMES_HOME (default ~/.hermes on the target)")
     p.set_defaults(func=_cmd_deploy)
 
-    p = sub.add_parser("verify", help="Run Deploy Guard on a team")
+    p = sub.add_parser("verify", help="Run Deploy Guard on a team (local or remote with --host)")
     p.add_argument("name", help="Blueprint/team name to verify")
     p.add_argument("--home", default=None, help="Target HERMES_HOME")
     p.add_argument("--chat-probe", action="store_true", help="Also run a bounded agent chat probe (needs provider keys)")
+    p.add_argument("--host", default=None, help="Optional VPS target 'user@host[:port]' — verify remotely")
+    p.add_argument("--ssh-key", default=None, help="With --host: path to your own ssh private key")
+    p.add_argument("--remote-home", default=None, help="With --host: remote HERMES_HOME")
     p.set_defaults(func=_cmd_verify)
 
-    p = sub.add_parser("rollback", help="Roll back a team")
+    p = sub.add_parser("rollback", help="Roll back a team (local or remote with --host)")
     p.add_argument("name", help="Blueprint/team name to roll back")
     p.add_argument("--home", default=None, help="Target HERMES_HOME")
+    p.add_argument("--host", default=None, help="Optional VPS target 'user@host[:port]' — roll back remotely")
+    p.add_argument("--ssh-key", default=None, help="With --host: path to your own ssh private key")
+    p.add_argument("--remote-home", default=None, help="With --host: remote HERMES_HOME")
     p.set_defaults(func=_cmd_rollback)
 
     p = sub.add_parser("factory", help="Generate a new blueprint via the Agent Factory")
@@ -142,7 +156,9 @@ def _cmd_list(args) -> int:
 
 def _cmd_deploy(args) -> int:
     r = json.loads(tools.team_deploy(args.name, prefix=args.prefix, dry_run=args.dry_run,
-                                     home=args.home, verify=not args.no_verify))
+                                     home=args.home, verify=not args.no_verify,
+                                     host=args.host, ssh_key=args.ssh_key,
+                                     remote_home=args.remote_home))
     if "verify" in r:
         r["checks"] = (r.get("verify") or {}).get("checks", [])
         r["team"] = args.name
@@ -150,13 +166,17 @@ def _cmd_deploy(args) -> int:
 
 
 def _cmd_verify(args) -> int:
-    r = json.loads(tools.team_verify(args.name, home=args.home))
+    r = json.loads(tools.team_verify(args.name, home=args.home,
+                                     host=args.host, ssh_key=args.ssh_key,
+                                     remote_home=args.remote_home))
     r["team"] = args.name
     return _print(r)
 
 
 def _cmd_rollback(args) -> int:
-    r = json.loads(tools.team_rollback(args.name, home=args.home))
+    r = json.loads(tools.team_rollback(args.name, home=args.home,
+                                       host=args.host, ssh_key=args.ssh_key,
+                                       remote_home=args.remote_home))
     r["team"] = args.name
     return _print(r)
 
