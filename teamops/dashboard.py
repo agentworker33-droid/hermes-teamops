@@ -571,7 +571,7 @@ _RUN_CSS = """
 @keyframes rpulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
 .runs-stage { min-width: 0; }
 .runs-graph { background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 10px 6px; overflow: auto; max-height: 620px; }
-.runs-graph svg { width: 100%; height: auto; display: block; min-width: 340px; }
+.runs-graph svg { display: block; margin: 0 auto; max-width: 100%; max-height: 560px; width: auto; height: auto; min-width: 340px; }
 .run-g .rg-box { cursor: pointer; }
 .run-g rect.bx { fill: var(--panel); stroke: var(--line2); stroke-width: 1; rx: 7; }
 .run-g rect.bx.s-running { stroke: var(--accent); stroke-width: 1.5; }
@@ -586,12 +586,12 @@ _RUN_CSS = """
 .run-g .bar.s-waiting { fill: var(--dim); }
 .run-g text.tl { fill: var(--txt); font-family: var(--mono); font-size: 12px; font-weight: 600; }
 .run-g text.ts { fill: var(--mut); font-family: var(--mono); font-size: 10px; }
-.run-g path.edge { fill: none; stroke: var(--line2); stroke-width: 1.2; }
-.run-g path.edge.lit { stroke: var(--accent); stroke-width: 1.8; }
-.run-g path.edge.to-running { stroke: var(--accent); stroke-dasharray: 4 5; animation: eflow 1.2s linear infinite; }
+.run-g path.edge { fill: none; stroke: var(--txt); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; opacity: .55; }
+.run-g path.edge.lit { stroke: var(--accent); stroke-width: 3; opacity: 1; }
+.run-g path.edge.to-running { stroke: var(--accent); stroke-dasharray: 6 6; stroke-width: 2.6; animation: eflow 1.2s linear infinite; }
 @keyframes eflow { to { stroke-dashoffset: -18; } }
-.run-g path.head { fill: var(--line2); stroke: none; }
-.run-g path.head.lit { fill: var(--accent); }
+.run-g path.head { fill: var(--txt); stroke: none; opacity: .55; }
+.run-g path.head.lit { fill: var(--accent); opacity: 1; }
 .run-g .rg-box:hover rect.bx { filter: brightness(1.35); }
 .runs-detail { margin-top: 12px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--line2); border-radius: 10px; padding: 13px 16px; font-family: var(--mono); font-size: 12px; color: var(--mut); }
 .runs-detail .d-title { color: var(--white); font-weight: 700; margin-bottom: 4px; }
@@ -615,7 +615,8 @@ _RUN_JS = """
   var graphEl = document.getElementById('runs-graph');
   var detailEl = document.getElementById('runs-detail');
   var SVGNS = 'http://www.w3.org/2000/svg';
-  var W = 214, H = 62, GX = 28, GY = 52, PAD = 16;
+  var H = 62, GX = 28, GY = 52, PAD = 16;
+  var MIN_W = 170, MAX_W = 330;
 
   function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -651,7 +652,11 @@ _RUN_JS = """
     var per = {}, idx = {};
     nodes.forEach(function (n) { var l = n.layer || 0; per[l] = (per[l] || 0) + 1; });
     var maxCols = 1; Object.keys(per).forEach(function (l) { if (per[l] > maxCols) maxCols = per[l]; });
-    var width = PAD * 2 + maxCols * W + (maxCols - 1) * GX;
+    var availW = Math.max(320, (graphEl.clientWidth || 900) - PAD * 2);
+    var W = Math.max(MIN_W, Math.min(MAX_W, Math.floor((availW - (maxCols - 1) * GX) / maxCols)));
+    var totalW = maxCols * W + (maxCols - 1) * GX;
+    var offX = Math.max(0, (availW - totalW) / 2);
+    var width = totalW + PAD * 2;
     var height = PAD * 2 + (maxLayer + 1) * H + maxLayer * GY;
     var svg = document.createElementNS(SVGNS, 'svg');
     svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
@@ -662,7 +667,7 @@ _RUN_JS = """
     nodes.forEach(function (n) {
       var l = n.layer || 0;
       idx[l] = idx[l] || 0;
-      pos[n.id] = { x: PAD + idx[l] * (W + GX), y: PAD + l * (H + GY) };
+      pos[n.id] = { x: PAD + offX + idx[l] * (W + GX), y: PAD + l * (H + GY) };
       idx[l]++;
     });
     var edges = document.createElementNS(SVGNS, 'g');
@@ -679,7 +684,7 @@ _RUN_JS = """
         edges.appendChild(path);
         var head = document.createElementNS(SVGNS, 'path');
         head.setAttribute('class', 'head'); head.setAttribute('data-from', d); head.setAttribute('data-to', n.id);
-        head.setAttribute('d', 'M' + (x2 - 5) + ',' + y2 + ' l5,-7 l5,7 Z');
+        head.setAttribute('d', 'M' + (x2 - 6) + ',' + y2 + ' l6,-9 l6,9 Z');
         edges.appendChild(head);
       });
     });
