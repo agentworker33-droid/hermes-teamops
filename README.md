@@ -31,17 +31,19 @@ degrade). 160 tests. Next: D3 ship (PR, video, form).**
 ## Install
 
 ```bash
-# from a local checkout
-hermes plugins install ./hermes-teamops
+# from a local checkout — point at the plugin package dir (holds plugin.yaml)
+hermes plugins install ~/hermes-teamops/teamops
 # or from the catalog once published (D3)
 hermes plugins install hermes-teamops
 ```
 
-Verify with the same checks the catalog CI runs:
+Verify with the same checks the catalog CI runs. The catalog entry uses `subdir: teamops`,
+so run validate/doctor against the subdir (running them on the repo root fails with
+"no plugin.yaml" — the manifest lives in `teamops/`):
 
 ```bash
-hermes plugins validate ~/hermes-teamops --install-deps
-hermes plugins doctor ~/hermes-teamops
+hermes plugins validate ~/hermes-teamops/teamops --install-deps
+hermes plugins doctor ~/hermes-teamops/teamops
 ```
 
 ## Quickstart (against a TEMP home — never your live box unless you mean it)
