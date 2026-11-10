@@ -115,6 +115,48 @@ print('shared:', r.get('shared', {}).get('shared'))
 step "10. hermes teams rollback sales"
 "$HERMES_BIN" teams rollback sales --home "$HERMES_HOME" 2>&1 | tail -12
 
+step "11. Demo run records (workflow view fixture — temp home only)"
+python3 - "$HERMES_HOME" <<'PY'
+import json, os, sys, datetime
+home = sys.argv[1]
+runs_dir = f"{home}/plugin-data/teamops-dashboard/runs"
+os.makedirs(runs_dir, exist_ok=True)
+now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+deploy = {
+    "id": "demo-deploy-sales",
+    "kind": "deploy",
+    "team": "sales",
+    "title": "Deploy sales blueprint (Deploy Guard)",
+    "state": "done",
+    "started": now,
+    "nodes": [
+        {"id": "preflight", "label": "Preflight parse team.yaml", "state": "done", "deps": [], "lane": "guard", "model": None, "summary": "team.yaml parsed: 5 roles, 3 gates, no phantom agents.", "attempts": 1},
+        {"id": "bash-n", "label": "bash -n generated scripts", "state": "done", "deps": ["preflight"], "lane": "guard", "model": None, "summary": "onboard-sales.sh syntax OK.", "attempts": 1},
+        {"id": "deploy", "label": "hermes teams deploy sales", "state": "done", "deps": ["bash-n"], "lane": "deploy", "model": None, "summary": "5 profiles created, crons wired.", "attempts": 1},
+        {"id": "smoke", "label": "Smoke: member profiles boot", "state": "failed", "deps": ["deploy"], "lane": "guard", "model": None, "summary": "inside-sales profile failed to boot: missing skills dir.", "attempts": 1},
+        {"id": "repair", "label": "Repair: create missing dir", "state": "done", "deps": ["smoke"], "lane": "guard", "model": None, "summary": "mkdir profiles/inside-sales/skills; re-smoke passed.", "attempts": 2},
+        {"id": "verify", "label": "Verify + report day-1", "state": "running", "deps": ["repair"], "lane": "guard", "model": None, "summary": "verifying live status of all 5 profiles…", "attempts": 1},
+    ],
+}
+swarm = {
+    "id": "demo-swarm-research",
+    "kind": "swarm",
+    "team": "research-swarm",
+    "title": "Research swarm · competitor lanes",
+    "state": "done",
+    "started": now,
+    "nodes": [
+        {"id": "s1", "label": "Lane: pricing", "state": "done", "deps": [], "lane": "competitors", "model": "deepseek/deepseek-v4-flash-0731", "summary": "3 competitor pricing pages pulled.", "attempts": 1},
+        {"id": "s2", "label": "Lane: positioning", "state": "done", "deps": [], "lane": "competitors", "model": "deepseek/deepseek-v4-flash-0731", "summary": "positioning matrix built.", "attempts": 1},
+        {"id": "s3", "label": "Lane: gaps", "state": "done", "deps": ["s1", "s2"], "lane": "competitors", "model": "deepseek/deepseek-v4-flash-0731", "summary": "gaps synthesized from lanes 1+2.", "attempts": 1},
+        {"id": "s4", "label": "Synthesize report", "state": "done", "deps": ["s3"], "lane": "hub", "model": "deepseek/deepseek-v4-flash-0731", "summary": "final report at ~/.hermes/research-swarm/report.md", "attempts": 1},
+    ],
+}
+json.dump(deploy, open(f"{runs_dir}/demo-deploy-sales.json", "w"), indent=2)
+json.dump(swarm, open(f"{runs_dir}/demo-swarm-research.json", "w"), indent=2)
+print(f"wrote 2 demo run records into {runs_dir}")
+PY
+
 echo
 echo "== DEMO COMPLETE =="
 if [[ "$KEEP" == "1" ]]; then

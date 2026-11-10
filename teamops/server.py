@@ -35,7 +35,8 @@ def _build(home: Path) -> str:
     data = dashboard.collect(home)
     build_id = (f"{len(data.get('profiles', []))}p-{len(data.get('teams', {}))}t-"
                 f"{datetime.now(timezone.utc).strftime('%H%M%S')}")
-    return dashboard.render_html(data, build_id=build_id)
+    return dashboard.render_html(data, build_id=build_id,
+                                 theme=dashboard.load_hermes_theme(home))
 
 
 def _health_data(home: Path, full: bool = False) -> dict:

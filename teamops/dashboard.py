@@ -24,7 +24,235 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import fleet
+from . import fleet, runs
+
+# ---------------------------------------------------------------------------
+# Theme bridging: match the user's chosen Hermes dashboard theme (config key
+# ``dashboard.theme`` — built-ins below, or a user theme in
+# ``<home>/dashboard-themes/*.yaml``) by projecting its 3-slot palette onto
+# TeamOps' semantic CSS variables. Falls back to the TeamOps look (None) when
+# the setting is missing or unknown — the dashboard never breaks on a theme.
+# ---------------------------------------------------------------------------
+
+
+def _hex_to_rgb(value: object):
+    import re
+    m = re.match(r"^#?([0-9a-fA-F]{6})$", str(value).strip())
+    if not m:
+        return None
+    h = m.group(1)
+    return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+
+def _rgb_to_hex(rgb) -> str:
+    return "#{:02x}{:02x}{:02x}".format(*[max(0, min(255, int(v))) for v in rgb])
+
+
+def _mix(a: str, b: str, t: float) -> str:
+    """Blend hex a toward hex b by t (0..1). Both must be #rrggbb."""
+    ra, ga, ba = _hex_to_rgb(a) or (255, 255, 255)
+    rb, gb, bb = _hex_to_rgb(b) or (0, 0, 0)
+    return _rgb_to_hex((ra + (rb - ra) * t, ga + (gb - ga) * t, ba + (bb - ba) * t))
+
+
+def _rgba_base(value: str, fallback: str = "#ff022b") -> str:
+    """Pull the base colour out of an ``rgba(r,g,b,a)`` string (or hex)."""
+    import re
+    m = re.match(r"rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)", str(value).strip())
+    if m:
+        return _rgb_to_hex((int(m.group(1)), int(m.group(2)), int(m.group(3))))
+    if _hex_to_rgb(value):
+        return value
+    return fallback
+
+
+def _luminance(hex_color: str) -> float:
+    rgb = _hex_to_rgb(hex_color) or (0, 0, 0)
+    return (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255
+
+
+# Built-in Hermes dashboard themes (names match ``dashboard.theme`` in the web
+# server; palettes come from web/src/themes/presets.ts + apps/shared
+# theme-presets.ts). ``mid`` is the dashboard "midground": text + primary fill.
+_HERMES_BUILTIN_THEMES: dict[str, dict] = {
+    "default": {
+        "label": "Hermes Teal", "bg": "#041c1c", "mid": "#ffe6cb",
+        "fg": "#ffffff", "glow": "rgba(255, 189, 56, 0.35)",
+    },
+    "default-large": {
+        "label": "Hermes Teal (Large)", "bg": "#041c1c", "mid": "#ffe6cb",
+        "fg": "#ffffff", "glow": "rgba(255, 189, 56, 0.35)",
+    },
+    "nous-blue": {
+        "label": "Nous Blue", "bg": "#e8f2fd", "mid": "#0053fd",
+        "fg": "#170d02", "glow": "rgba(0, 83, 253, 0.12)",
+    },
+    "midnight": {
+        "label": "Midnight", "bg": "#08081c", "mid": "#ddd6ff",
+        "fg": "#ffffff", "glow": "rgba(139, 128, 232, 0.3)",
+    },
+    "ember": {
+        "label": "Ember", "bg": "#160800", "mid": "#d97316",
+        "fg": "#ffffff", "glow": "rgba(217, 115, 22, 0.3)",
+        "overrides": {"warning": "#f97316", "destructive": "#c92d0f"},
+    },
+    "mono": {
+        "label": "Mono", "bg": "#0e0e0e", "mid": "#9a9a9a",
+        "fg": "#eaeaea", "glow": "rgba(154, 154, 154, 0.3)",
+    },
+    "cyberpunk": {
+        "label": "Cyberpunk", "bg": "#000a00", "mid": "#00ff41",
+        "fg": "#ffffff", "glow": "rgba(0, 255, 65, 0.3)",
+        "overrides": {"success": "#00ff88", "warning": "#ffd700", "destructive": "#ff0055"},
+    },
+    "rose": {
+        "label": "Rosé", "bg": "#1a0f15", "mid": "#ffd4e1",
+        "fg": "#ffffff", "glow": "rgba(249, 168, 212, 0.3)",
+    },
+}
+
+
+def _read_config_theme(home: Path) -> str | None:
+    """Read ``dashboard.theme`` from config.yaml without importing Hermes."""
+    cfg = home / "config.yaml"
+    if not cfg.exists():
+        return None
+    import re
+    text = cfg.read_text(encoding="utf-8", errors="ignore")
+    # locate the dashboard: section, then its theme: line (yaml-safe enough)
+    m = re.search(r"^dashboard:\s*(?:#.*)?$", text, re.MULTILINE)
+    if not m:
+        return None
+    body = text[m.end():]
+    body = re.split(r"^\S[^:\n]*:", body, flags=re.MULTILINE)[0]
+    t = re.search(r"^\s*theme:\s*['\"]?([^#\n'\"]+)", body, re.MULTILINE)
+    if not t:
+        return None
+    name = t.group(1).strip()
+    return name or None
+
+
+def _load_user_theme(home: Path, name: str) -> dict | None:
+    """A user theme from ``<home>/dashboard-themes/<name>.yaml`` (normalised)."""
+    try:
+        import yaml  # pyyaml/hermes_yaml present in Hermes homes
+    except Exception:  # noqa: BLE001
+        return None
+    themes_dir = home / "dashboard-themes"
+    if not themes_dir.is_dir():
+        return None
+    for f in sorted(themes_dir.glob("*.yaml")):
+        try:
+            data = yaml.safe_load(f.read_text(encoding="utf-8-sig"))
+        except Exception:  # noqa: BLE001
+            continue
+        if not isinstance(data, dict) or data.get("name") != name:
+            continue
+        pal = data.get("palette") or data.get("colors") or {}
+        bg = pal.get("background") or {}
+        mid = pal.get("midground") or {}
+        fg = pal.get("foreground") or {}
+        typo = data.get("typography") or {}
+        ov = data.get("colorOverrides") or {}
+        return {
+            "label": data.get("label") or name,
+            "bg": _hex_to_rgb(bg.get("hex")) and bg["hex"] or "#141414",
+            "mid": _hex_to_rgb(mid.get("hex")) and mid["hex"] or "#eaeaea",
+            "fg": _hex_to_rgb(fg.get("hex")) and fg["hex"] or "#ffffff",
+            "glow": pal.get("warmGlow") or "rgba(255,255,255,.25)",
+            "fontMono": typo.get("fontMono") or "",
+            "overrides": {k: v for k, v in ov.items()
+                          if k in ("success", "warning", "destructive") and isinstance(v, str)},
+        }
+    return None
+
+
+def load_hermes_theme(home: Path) -> dict | None:
+    """Resolve the active Hermes dashboard theme to a TeamOps palette dict.
+
+    Returns None when unset/unknown so the dashboard keeps its own look.
+    """
+    home = Path(home)
+    name = _read_config_theme(home)
+    if not name:
+        return None
+    if name in _HERMES_BUILTIN_THEMES:
+        theme = dict(_HERMES_BUILTIN_THEMES[name])
+        theme["name"] = name
+        return theme
+    user = _load_user_theme(home, name)
+    if user is not None:
+        user["name"] = name
+        return user
+    return None
+
+
+def _theme_root_css(theme: dict | None) -> str:
+    """Project a TeamOps palette dict onto :root overrides; '' when none."""
+    if not theme:
+        return ""
+    bg = theme.get("bg") or "#050505"
+    mid = theme.get("mid") or "#f4f4f5"
+    fg = theme.get("fg") or "#ffffff"
+    glow = theme.get("glow") or "rgba(255,255,255,.22)"
+    dark = _luminance(bg) < 0.5
+    accent = _rgba_base(glow, mid if not dark else "#ff022b")
+    if dark:
+        panel = _mix(bg, "#ffffff", 0.045)
+        panel2 = _mix(bg, "#ffffff", 0.1)
+        line = _mix(bg, "#ffffff", 0.15)
+        line2 = _mix(bg, "#ffffff", 0.24)
+        hover = "rgba(255,255,255,.045)"
+        hover2 = "rgba(255,255,255,.03)"
+        chip_bg = _mix(bg, "#ffffff", 0.04)
+        chip_line = _mix(bg, "#ffffff", 0.18)
+        gray = _mix(mid, "#ffffff", 0.25)
+        mut = _mix(mid, bg, 0.35)
+        dim = _mix(mid, bg, 0.62)
+        soft = _mix(bg, "#ffffff", 0.3)
+        bar_bg = _mix(bg, "#ffffff", 0.09)
+        bar_low = _mix(mid, "#ffffff", 0.15)
+        bar_mid = _mix(mid, bg, 0.45)
+    else:
+        panel = _mix(bg, "#000000", 0.05)
+        panel2 = _mix(bg, "#000000", 0.1)
+        line = _mix(bg, "#000000", 0.15)
+        line2 = _mix(bg, "#000000", 0.25)
+        hover = "rgba(0,0,0,.05)"
+        hover2 = "rgba(0,0,0,.04)"
+        chip_bg = _mix(bg, "#000000", 0.06)
+        chip_line = _mix(bg, "#000000", 0.25)
+        gray = _mix(mid, "#000000", 0.3)
+        mut = _mix(mid, bg, 0.4)
+        dim = _mix(mid, bg, 0.65)
+        soft = _mix(bg, "#000000", 0.28)
+        bar_bg = _mix(bg, "#000000", 0.08)
+        bar_low = _mix(mid, "#ffffff", 0.25)
+        bar_mid = _mix(mid, bg, 0.5)
+    ov = theme.get("overrides") or {}
+    ok = ov.get("success", bar_low if not dark else "#8fce9f")
+    warn = ov.get("warning", accent)
+    err = ov.get("destructive", "#ff4d4d")
+    font_mono = (theme.get("fontMono") or "")[:120]
+    mono = f"{font_mono}, " if font_mono and all(c.isalnum() or c in ' -,' for c in font_mono) else ""
+    return f""":root {{
+  --bg: {bg}; --bg2: {_mix(bg, '#000000', 0.35) if dark else '#ffffff'};
+  --panel: {panel}; --panel2: {panel2};
+  --line: {line}; --line2: {line2};
+  --txt: {mid}; --mut: {mut}; --dim: {dim};
+  --white: {fg}; --black: {bg}; --gray: {gray};
+  --red: {accent}; --accent: {accent};
+  --err: {err}; --err-txt: {_mix(err, '#ffffff', 0.5)}; --err-glow: rgba(255,60,60,.18);
+  --hover: {hover}; --hover2: {hover2}; --chip-bg: {chip_bg}; --chip-line: {chip_line};
+  --soft: {soft}; --bar-bg: {bar_bg}; --bar-low: {bar_low}; --bar-mid: {bar_mid};
+  --glow: {glow if dark else 'rgba(0,0,0,.14)'}; --glow-strong: rgba(255,255,255,.7);
+  --ray: {mid}; --pulse: {_rgba_base(glow, accent)}cc; --pulse-glow: {_rgba_base(glow, accent)}b3;
+  --pulse-soft: {mid}f2; --pulse-soft-glow: {mid}99;
+  --danger-border: {_rgba_base(glow, accent)}73; --danger-bg: {_rgba_base(glow, accent)}14;
+  --ok: {ok}; --warn: {warn};
+  --mono: {mono}ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}}"""
+
 
 _CSS = """
 :root {
@@ -33,6 +261,13 @@ _CSS = """
   --line: #1e1e22; --line2: #2f2f35;
   --txt: #f4f4f5; --mut: #a1a1aa; --dim: #6b6b74;
   --white: #fff; --black: #000; --gray: #c9c9cf; --red: #ff022b;
+  --accent: #ff022b; --err: #ff4d4d; --err-txt: #ff8080; --err-glow: rgba(255,60,60,.18);
+  --hover: #0d0d10; --hover2: #0c0c0f; --chip-bg: #0e0e10; --chip-line: #2a2a2a;
+  --soft: #3a3a3a; --bar-bg: #1a1a1a; --bar-low: #d4d4d4; --bar-mid: #8a8a8a;
+  --glow: rgba(255,255,255,.22); --glow-strong: rgba(255,255,255,.7);
+  --ray: #f2f3f5; --pulse: rgba(255,2,43,.9); --pulse-glow: rgba(255,2,43,.8);
+  --pulse-soft: rgba(255,255,255,.95); --pulse-soft-glow: rgba(255,255,255,.6);
+  --danger-border: rgba(255,2,43,.45); --danger-bg: rgba(255,2,43,.08);
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
 * { box-sizing: border-box; }
@@ -49,7 +284,7 @@ body::after {  /* scanlines */
 /* ---------- rail ---------- */
 .rail {
   position: fixed; left: 0; top: 0; bottom: 0; width: 236px; z-index: 60;
-  background: #040406; border-right: 1px solid var(--line);
+  background: var(--bg2); border-right: 1px solid var(--line);
   padding: 22px 14px 16px; display: flex; flex-direction: column; overflow: hidden;
 }
 .rail .brand { display: flex; gap: 11px; align-items: center; padding: 0 6px; margin-bottom: 26px; }
@@ -66,7 +301,7 @@ body::after {  /* scanlines */
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   font-size: 10px; letter-spacing: .5px; color: var(--gray); background: var(--panel);
 }
-.rail .nav a:hover { color: var(--txt); background: #0d0d10; }
+.rail .nav a:hover { color: var(--txt); background: var(--hover); }
 .rail .nav a.on { background: var(--panel2); color: var(--white); border-color: var(--line); }
 .rail .nav a.on .sig { background: var(--white); color: var(--black); border-color: var(--white); }
 .rail .foot {
@@ -88,7 +323,7 @@ body::after {  /* scanlines */
 .pagehead .eyebrow .live { color: var(--red); }
 .pagehead h1 {
   font-size: 27px; font-family: var(--mono); font-weight: 700; letter-spacing: .3px;
-  margin: 0 0 8px; text-shadow: 0 0 16px rgba(255,255,255,.22);
+  margin: 0 0 8px; text-shadow: 0 0 16px var(--glow);
 }
 .pagehead p { color: var(--mut); font-size: 14px; max-width: 74ch; margin: 0; }
 
@@ -101,8 +336,8 @@ body::after {  /* scanlines */
 .card .num { font-size: 30px; font-weight: 700; font-family: var(--mono); line-height: 1.05; }
 .card .lbl { font-size: 10.5px; color: var(--mut); text-transform: uppercase; letter-spacing: 1.2px; margin-top: 3px; font-family: var(--mono); }
 .card.warn { border-left-color: var(--white); } .card.warn .num { color: var(--white); }
-.card.ok { border-left-color: #8a8a90; } .card.ok .num { color: var(--gray); }
-.card.info { border-left-color: #c5c5ca; } .card.info .num { color: var(--white); }
+.card.ok { border-left-color: var(--gray); } .card.ok .num { color: var(--gray); }
+.card.info { border-left-color: var(--line2); } .card.info .num { color: var(--white); }
 .quickacts { display: grid; grid-template-columns: repeat(auto-fit, minmax(205px, 1fr)); gap: 10px; margin: 24px 0 6px; }
 
 /* ---------- sections ---------- */
@@ -120,23 +355,23 @@ section.sec { margin-bottom: 30px; }
   font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: 1px; white-space: nowrap; }
 .pill.run { background: var(--white); color: var(--black); }
 .pill.ready { background: transparent; color: var(--gray); border: 1px solid var(--line2); }
-.pill.actv { background: #1f1f22; color: var(--white); border: 1px solid #555; }
-.pill.idle { background: transparent; color: var(--dim); border: 1px dashed #3a3a3a; }
+.pill.actv { background: var(--panel2); color: var(--white); border: 1px solid var(--line2); }
+.pill.idle { background: transparent; color: var(--dim); border: 1px dashed var(--soft); }
 .chip {
   display: inline-block; padding: 2px 9px; border-radius: 5px; font-size: 11px; font-weight: 600;
   font-family: var(--mono); border: 1px solid transparent; letter-spacing: .3px; line-height: 1.6;
 }
-.chip.ok { background: #101010; color: #a5a5ad; border-color: #3a3a3a; }
+.chip.ok { background: var(--bg2); color: var(--gray); border-color: var(--soft); }
 .chip.fail { background: var(--white); color: var(--black); border-color: var(--white); }
-.chip.warn { background: #2a2a2a; color: var(--white); border-color: #4a4a4a; }
-.chip.mute { background: transparent; color: #62626b; border-color: #26262a; }
+.chip.warn { background: var(--panel2); color: var(--white); border-color: var(--line2); }
+.chip.mute { background: transparent; color: var(--dim); border-color: var(--line); }
 .badge {
   display: inline-block; padding: 2px 9px; border-radius: 5px; font-size: 11px; font-weight: 700;
   font-family: var(--mono); letter-spacing: .8px; border: 1px solid currentColor; margin-right: 6px;
 }
 .badge.HIGH { background: var(--white); color: var(--black); border-color: var(--white); }
-.badge.MED { background: #2a2a2a; color: var(--white); border-color: #4a4a4a; }
-.badge.INFO { background: transparent; color: #8f8f96; border-color: #4a4a4a; }
+.badge.MED { background: var(--panel2); color: var(--white); border-color: var(--line2); }
+.badge.INFO { background: transparent; color: var(--gray); border-color: var(--line2); }
 
 /* ---------- tables ---------- */
 table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
@@ -145,11 +380,11 @@ th {
   color: var(--mut); font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.4px;
   font-family: var(--mono); border-bottom-color: var(--line2);
 }
-tr:hover td { background: #0e0e11; }
-.bar { background: #1a1a1a; border-radius: 3px; height: 12px; width: 120px; overflow: hidden; display: inline-block; vertical-align: middle; }
+tr:hover td { background: var(--hover); }
+.bar { background: var(--bar-bg); border-radius: 3px; height: 12px; width: 120px; overflow: hidden; display: inline-block; vertical-align: middle; }
 .bar > i { display: block; height: 100%; }
-.bar.low > i { background: #d4d4d4; } .bar.mid > i { background: #8a8a8a; } .bar.high > i { background: var(--white); box-shadow: 0 0 6px rgba(255,255,255,.7); }
-.bar.na > i { width: 100%; background: #2c2c2c; }
+.bar.low > i { background: var(--bar-low); } .bar.mid > i { background: var(--bar-mid); } .bar.high > i { background: var(--white); box-shadow: 0 0 6px var(--glow-strong); }
+.bar.na > i { width: 100%; background: var(--line2); }
 li.more { list-style: none; color: var(--dim); font-size: 11px; font-family: var(--mono); }
 
 /* ---------- team cards ---------- */
@@ -159,14 +394,14 @@ li.more { list-style: none; color: var(--dim); font-size: 11px; font-family: var
   padding: 5px 13px; border: 1px solid var(--line2); border-radius: 999px;
   background: var(--bg); color: var(--mut); user-select: none;
 }
-.fchip:hover { color: var(--txt); border-color: #6a6a72; }
+.fchip:hover { color: var(--txt); border-color: var(--line2); }
 .fchip.on { background: var(--white); color: var(--black); border-color: var(--white); }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 14px; }
 .teambox {
   background: var(--panel); border: 1px solid var(--line); border-top: 2px solid var(--gray);
   border-radius: 10px; padding: 15px 16px;
 }
-.teambox.is-group { border-top-color: #5a5a63; }
+.teambox.is-group { border-top-color: var(--gray); }
 .tb-head { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
 .teambox h3 { margin: 0; font-size: 14.5px; font-family: var(--mono); letter-spacing: .4px; font-weight: 700; }
 .tb-head h3::before { content: "// "; color: var(--dim); font-weight: 400; }
@@ -180,9 +415,9 @@ li.more { list-style: none; color: var(--dim); font-size: 11px; font-family: var
 .members { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
 .mem-chip {
   font-family: var(--mono); font-size: 11px; color: var(--gray);
-  border: 1px solid #2a2a2a; background: #0e0e10; padding: 3px 8px; border-radius: 5px;
+  border: 1px solid var(--chip-line); background: var(--chip-bg); padding: 3px 8px; border-radius: 5px;
 }
-.mem-chip.soul::after { content: "◈"; margin-left: 4px; color: #707078; font-size: 9px; }
+.mem-chip.soul::after { content: "◈"; margin-left: 4px; color: var(--dim); font-size: 9px; }
 .kan { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; margin-bottom: 10px; }
 .kan div { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
 .kan .n { font-size: 17px; font-weight: 700; font-family: var(--mono); color: var(--white); }
@@ -198,7 +433,7 @@ li.more { list-style: none; color: var(--dim); font-size: 11px; font-family: var
 .act.primary:hover { background: var(--gray); }
 
 /* ---------- launch ---------- */
-.launchbox { background: var(--panel); border: 1px solid var(--line); border-top: 2px solid #dfdfe4;
+.launchbox { background: var(--panel); border: 1px solid var(--line); border-top: 2px solid var(--gray);
   border-radius: 10px; padding: 15px 16px; display: flex; flex-direction: column; }
 .launchbox .hd { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
 .launchbox h3 { margin: 0; font-family: var(--mono); font-size: 14px; letter-spacing: .4px; }
@@ -209,7 +444,7 @@ li.more { list-style: none; color: var(--dim); font-size: 11px; font-family: var
 .tpl-row { display: flex; flex-wrap: wrap; gap: 9px; }
 .tpl-chip { font-family: var(--mono); font-size: 11.5px; letter-spacing: .7px; color: var(--mut);
   border: 1px solid var(--line2); background: var(--bg); padding: 8px 15px; border-radius: 999px; cursor: pointer; }
-.tpl-chip:hover { color: var(--white); border-color: #888; }
+.tpl-chip:hover { color: var(--white); border-color: var(--gray); }
 
 /* ---------- memory ---------- */
 .mem-wrap { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 11px; }
@@ -218,22 +453,22 @@ li.more { list-style: none; color: var(--dim); font-size: 11px; font-family: var
 .memrow { display: flex; gap: 10px; align-items: center; font-family: var(--mono);
   font-size: 11px; color: var(--mut); margin-bottom: 7px; }
 .memrow .mkey { width: 30px; letter-spacing: .8px; }
-.memrow .mbar { flex: 1; height: 8px; background: #1a1a1a; border-radius: 3px; overflow: hidden; }
+.memrow .mbar { flex: 1; height: 8px; background: var(--bar-bg); border-radius: 3px; overflow: hidden; }
 .memrow .mbar > i { display: block; height: 100%; background: var(--white); }
 .memrow .mval { width: 52px; text-align: right; }
 
 /* ---------- team diagram (hub-and-spoke, pulses = handoffs) ---------- */
-.mesh-wrap { background: #000; border: 1px solid var(--line); border-radius: 12px; padding: 8px;
+.mesh-wrap { background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; padding: 8px;
   transition: transform 1.2s cubic-bezier(.2,.7,.3,1); position: relative; }
 .mesh-svg { width: 100%; height: auto; display: block; }
-.mesh-svg .ray { fill: none; stroke: #f2f3f5; stroke-width: 26; stroke-linecap: round; }
+.mesh-svg .ray { fill: none; stroke: var(--ray); stroke-width: 26; stroke-linecap: round; }
 .mesh-svg .pulse {
-  fill: none; stroke: rgba(255,2,43,.9); stroke-width: 8; stroke-linecap: round;
-  filter: drop-shadow(0 0 7px rgba(255,2,43,.6));
+  fill: none; stroke: var(--pulse); stroke-width: 8; stroke-linecap: round;
+  filter: drop-shadow(0 0 7px var(--pulse-glow));
   stroke-dasharray: 26 300; opacity: .85; animation: tpulse 4.5s linear infinite;
 }
 .mesh-svg .pulse.pwh {
-  stroke: rgba(255,255,255,.95); filter: drop-shadow(0 0 6px rgba(255,255,255,.6));
+  stroke: var(--pulse-soft); filter: drop-shadow(0 0 6px var(--pulse-soft-glow));
   stroke-dasharray: 18 300; animation-duration: 7s;
 }
 @keyframes tpulse { to { stroke-dashoffset: -326; } }
@@ -244,16 +479,16 @@ li.more { list-style: none; color: var(--dim); font-size: 11px; font-family: var
   filter: drop-shadow(0 0 10px rgba(255,255,255,.55));
   transition: fill .15s, opacity .4s;
 }
-.mesh-svg g.node.hub circle { filter: drop-shadow(0 0 20px rgba(255,255,255,.85)); }
+.mesh-svg g.node.hub circle { filter: drop-shadow(0 0 20px var(--glow-strong)); }
 @keyframes breath { 0%,100% { transform: scale(1); } 50% { transform: scale(1.12); } }
-.mesh-svg g.node:hover circle, .mesh-svg g.node.active circle { fill: var(--red); filter: drop-shadow(0 0 14px rgba(255,2,43,.8)); }
-.mesh-svg .nlabel rect { fill: rgba(0,0,0,.74); stroke: rgba(255,255,255,.28); stroke-width: 1; rx: 999; }
+.mesh-svg g.node:hover circle, .mesh-svg g.node.active circle { fill: var(--accent); filter: drop-shadow(0 0 14px var(--pulse-glow)); }
+.mesh-svg .nlabel rect { fill: rgba(0,0,0,.74); stroke: var(--line2); stroke-width: 1; rx: 999; }
 .mesh-svg .nlabel text { fill: var(--white); font-size: 13px; font-family: var(--mono); font-weight: 600; text-anchor: middle; }
 
 /* ---------- toast (browser fallback for action buttons) ---------- */
 .toast {
   position: fixed; right: 18px; bottom: 18px; width: min(420px, calc(100vw - 36px)); z-index: 200;
-  background: #0d0d10; border: 1px solid var(--line2); border-left: 3px solid var(--white);
+  background: var(--panel); border: 1px solid var(--line2); border-left: 3px solid var(--white);
   border-radius: 10px; padding: 14px 16px; font-family: var(--mono); font-size: 11.5px;
   box-shadow: 0 8px 30px rgba(0,0,0,.6); display: none;
 }
@@ -261,8 +496,8 @@ li.more { list-style: none; color: var(--dim); font-size: 11px; font-family: var
 .toast b { color: var(--white); }
 .toast .msg { color: var(--gray); font-size: 12px; line-height: 1.5; margin: 8px 0 0; white-space: pre-wrap;
   max-height: 220px; overflow: auto; }
-.toast.err { border-color: #ff4d4d; box-shadow: 0 0 18px rgba(255, 60, 60, .18); }
-.toast.err b { color: #ff8080; }
+.toast.err { border-color: var(--err); box-shadow: 0 0 18px var(--err-glow); }
+.toast.err b { color: var(--err-txt); }
 .toast .cmd { color: var(--gray); background: #000; border: 1px solid var(--line); border-radius: 6px;
   padding: 8px 10px; margin: 9px 0; word-break: break-all; }
 .toast .row { display: flex; gap: 8px; align-items: center; }
@@ -286,7 +521,7 @@ footer.line a { color: var(--dim); }
   padding: 10px 12px; cursor: pointer; min-height: 40px;
 }
 .team-btn .tname { flex: 1; letter-spacing: .2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.team-btn:hover { color: var(--txt); background: #0c0c0f; }
+.team-btn:hover { color: var(--txt); background: var(--hover2); }
 .team-btn.on { color: var(--white); background: var(--panel2); border-color: var(--line); }
 .diagram-stage { min-width: 0; }
 .diagram-pane { display: none; }
@@ -298,10 +533,10 @@ footer.line a { color: var(--dim); }
 .pane-sub { color: var(--mut); font-family: var(--mono); font-size: 12px; margin-bottom: 12px; }
 .hf {
   display: inline-block; margin-left: 5px; padding: 0 5px; border-radius: 5px;
-  font-family: var(--mono); font-size: 10px; color: var(--red);
-  border: 1px solid rgba(255,2,43,.45); background: rgba(255,2,43,.08); cursor: pointer;
+  font-family: var(--mono); font-size: 10px; color: var(--accent);
+  border: 1px solid var(--danger-border); background: var(--danger-bg); cursor: pointer;
 }
-.hf:hover { color: #fff; background: var(--red); border-color: var(--red); }
+.hf:hover { color: var(--white); background: var(--accent); border-color: var(--accent); }
 .boom .pulse { animation-duration: 1.1s; }
 .boom .ray { stroke: var(--red); transition: stroke .3s; }
 .legend { font-family: var(--mono); font-size: 10px; color: var(--dim); margin: 6px 0 0; text-align: center; }
@@ -314,10 +549,197 @@ footer.line a { color: var(--dim); }
   color: var(--gray); text-transform: uppercase; padding-top: 10px; }
 """
 
+_RUN_CSS = """
+/* ---------- runs / workflow view ---------- */
+.runs-layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; align-items: start; }
+.runs-list { display: flex; flex-direction: column; gap: 3px; }
+.run-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  font-family: var(--mono); font-size: 12.5px; color: var(--mut);
+  background: transparent; border: 1px solid transparent; border-radius: 9px;
+  padding: 9px 11px; cursor: pointer; min-height: 40px;
+}
+.run-row:hover { color: var(--txt); background: var(--hover2); }
+.run-row.on { color: var(--white); background: var(--panel2); border-color: var(--line); }
+.run-row .rt { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run-row .rc { color: var(--dim); font-size: 11px; white-space: nowrap; }
+.run-row .ra { color: var(--dim); font-size: 10.5px; white-space: nowrap; }
+.run-row .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--mut); }
+.run-row .dot.s-running { background: var(--accent); box-shadow: 0 0 8px var(--pulse-glow); animation: rpulse 1.6s ease-in-out infinite; }
+.run-row .dot.s-failed { background: var(--err); }
+.run-row .dot.s-done { background: var(--ok); }
+@keyframes rpulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+.runs-stage { min-width: 0; }
+.runs-graph { background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 10px 6px; overflow: auto; max-height: 620px; }
+.runs-graph svg { width: 100%; height: auto; display: block; min-width: 340px; }
+.run-g .rg-box { cursor: pointer; }
+.run-g rect.bx { fill: var(--panel); stroke: var(--line2); stroke-width: 1; rx: 7; }
+.run-g rect.bx.s-running { stroke: var(--accent); stroke-width: 1.5; }
+.run-g rect.bx.s-failed { stroke: var(--err); }
+.run-g rect.bx.s-done { stroke: var(--ok); }
+.run-g rect.bx.s-waiting { stroke-dasharray: 3 3; stroke: var(--dim); }
+.run-g rect.bx.on { stroke: var(--white); stroke-width: 1.6; }
+.run-g .bar { fill: var(--panel2); }
+.run-g .bar.s-running { fill: var(--accent); }
+.run-g .bar.s-failed { fill: var(--err); }
+.run-g .bar.s-done { fill: var(--ok); }
+.run-g .bar.s-waiting { fill: var(--dim); }
+.run-g text.tl { fill: var(--txt); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+.run-g text.ts { fill: var(--mut); font-family: var(--mono); font-size: 10px; }
+.run-g path.edge { fill: none; stroke: var(--line2); stroke-width: 1.2; }
+.run-g path.edge.lit { stroke: var(--accent); stroke-width: 1.8; }
+.run-g path.edge.to-running { stroke: var(--accent); stroke-dasharray: 4 5; animation: eflow 1.2s linear infinite; }
+@keyframes eflow { to { stroke-dashoffset: -18; } }
+.run-g path.head { fill: var(--line2); stroke: none; }
+.run-g path.head.lit { fill: var(--accent); }
+.run-g .rg-box:hover rect.bx { filter: brightness(1.35); }
+.runs-detail { margin-top: 12px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--line2); border-radius: 10px; padding: 13px 16px; font-family: var(--mono); font-size: 12px; color: var(--mut); }
+.runs-detail .d-title { color: var(--white); font-weight: 700; margin-bottom: 4px; }
+.runs-detail .d-meta { color: var(--dim); font-size: 11px; margin-bottom: 8px; }
+.runs-detail .d-sum { color: var(--gray); line-height: 1.55; white-space: pre-wrap; max-height: 180px; overflow: auto; }
+.runs-detail .d-none { color: var(--dim); font-style: italic; }
+.legend-runs { font-family: var(--mono); font-size: 10px; color: var(--dim); margin: 6px 0 0; }
+.legend-runs b { color: var(--gray); font-weight: 600; }
+.runs-more { margin-top: 8px; font-family: var(--mono); font-size: 11.5px; color: var(--mut);
+  border: 1px solid var(--line2); background: var(--bg); padding: 6px 14px; border-radius: 999px; cursor: pointer; align-self: flex-start; }
+.runs-more:hover { color: var(--white); border-color: var(--gray); }
+.runs-list.capped .run-row[data-run-slot="more"] { display: none; }
+.runs-list.capped .run-row[data-show-after] { display: none; }
+"""
+
+_RUN_JS = """
+(function () {
+  var RUNS = window.__RUNS__ || [];
+  if (!RUNS.length) return;
+  var listEl = document.getElementById('runs-list');
+  var graphEl = document.getElementById('runs-graph');
+  var detailEl = document.getElementById('runs-detail');
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  var W = 214, H = 62, GX = 28, GY = 52, PAD = 16;
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function boxTitle(n) { return n.label.length > 30 ? n.label.slice(0, 29) + '…' : n.label; }
+  function detail(run, n) {
+    if (!detailEl) return;
+    var deps = (n.deps || []).map(function (d) { return escapeHtml(d); }).join(', ') || 'none';
+    detailEl.innerHTML =
+      '<div class="d-title">' + escapeHtml(n.label) + '</div>' +
+      '<div class="d-meta">state: ' + escapeHtml(n.state) +
+      (n.lane ? ' · lane: ' + escapeHtml(n.lane) : '') +
+      (n.model ? ' · model: ' + escapeHtml(n.model) : '') +
+      ' · depends on: ' + deps + ' · attempts: ' + (n.attempts || 1) + '</div>' +
+      (n.summary ? '<div class="d-sum">' + escapeHtml(n.summary) + '</div>'
+        : '<div class="d-none">no detail recorded for this node</div>');
+  }
+  function light(id, on) {
+    if (!graphEl) return;
+    graphEl.querySelectorAll('path.edge, path.head').forEach(function (p) {
+      var hit = p.getAttribute('data-from') === id || p.getAttribute('data-to') === id;
+      p.classList.toggle('lit', !!on && hit);
+    });
+  }
+  function draw(run) {
+    if (!graphEl || !run) return;
+    var nodes = run.nodes || [];
+    graphEl.innerHTML = '';
+    if (!nodes.length) { graphEl.innerHTML = '<div class="empty">empty run</div>'; return; }
+    var maxLayer = 0;
+    nodes.forEach(function (n) { if ((n.layer || 0) > maxLayer) maxLayer = n.layer || 0; });
+    var per = {}, idx = {};
+    nodes.forEach(function (n) { var l = n.layer || 0; per[l] = (per[l] || 0) + 1; });
+    var maxCols = 1; Object.keys(per).forEach(function (l) { if (per[l] > maxCols) maxCols = per[l]; });
+    var width = PAD * 2 + maxCols * W + (maxCols - 1) * GX;
+    var height = PAD * 2 + (maxLayer + 1) * H + maxLayer * GY;
+    var svg = document.createElementNS(SVGNS, 'svg');
+    svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+    svg.setAttribute('class', 'run-g');
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', escapeHtml(run.title));
+    var pos = {};
+    nodes.forEach(function (n) {
+      var l = n.layer || 0;
+      idx[l] = idx[l] || 0;
+      pos[n.id] = { x: PAD + idx[l] * (W + GX), y: PAD + l * (H + GY) };
+      idx[l]++;
+    });
+    var edges = document.createElementNS(SVGNS, 'g');
+    nodes.forEach(function (n) {
+      (n.deps || []).forEach(function (d) {
+        var p = pos[d], c = pos[n.id];
+        if (!p || !c) return;
+        var x1 = p.x + W / 2, y1 = p.y + H, x2 = c.x + W / 2, y2 = c.y, midY = (y1 + y2) / 2;
+        var path = document.createElementNS(SVGNS, 'path');
+        path.setAttribute('class', 'edge' + (n.state === 'running' ? ' to-running' : ''));
+        path.setAttribute('fill', 'none');
+        path.setAttribute('d', 'M' + x1 + ',' + y1 + ' L' + x1 + ',' + midY + ' L' + x2 + ',' + midY + ' L' + x2 + ',' + y2);
+        path.setAttribute('data-from', d); path.setAttribute('data-to', n.id);
+        edges.appendChild(path);
+        var head = document.createElementNS(SVGNS, 'path');
+        head.setAttribute('class', 'head'); head.setAttribute('data-from', d); head.setAttribute('data-to', n.id);
+        head.setAttribute('d', 'M' + (x2 - 5) + ',' + y2 + ' l5,-7 l5,7 Z');
+        edges.appendChild(head);
+      });
+    });
+    svg.appendChild(edges);
+    nodes.forEach(function (n) {
+      var p = pos[n.id];
+      var g = document.createElementNS(SVGNS, 'g');
+      g.setAttribute('class', 'rg-box'); g.setAttribute('data-node', n.id);
+      g.setAttribute('transform', 'translate(' + p.x + ',' + p.y + ')');
+      var rect = document.createElementNS(SVGNS, 'rect');
+      rect.setAttribute('class', 'bx s-' + (n.state || 'unknown'));
+      rect.setAttribute('width', W); rect.setAttribute('height', H); rect.setAttribute('rx', '7');
+      var bar = document.createElementNS(SVGNS, 'rect');
+      bar.setAttribute('class', 'bar s-' + (n.state || 'unknown'));
+      bar.setAttribute('x', '6'); bar.setAttribute('y', '7'); bar.setAttribute('width', '3'); bar.setAttribute('height', H - 14);
+      var tl = document.createElementNS(SVGNS, 'text');
+      tl.setAttribute('class', 'tl'); tl.setAttribute('x', '16'); tl.setAttribute('y', '25');
+      tl.textContent = boxTitle(n);
+      var ts = document.createElementNS(SVGNS, 'text');
+      ts.setAttribute('class', 'ts'); ts.setAttribute('x', '16'); ts.setAttribute('y', '45');
+      ts.textContent = (n.state || 'unknown') + (n.lane ? ' · ' + n.lane : '') + (n.model ? ' · ' + n.model : '');
+      var title = document.createElementNS(SVGNS, 'title');
+      title.textContent = n.label + ' — ' + (n.state || 'unknown') + (n.summary ? ' — ' + n.summary : '');
+      g.appendChild(rect); g.appendChild(bar); g.appendChild(tl); g.appendChild(ts); g.appendChild(title);
+      g.addEventListener('click', function () {
+        detail(run, n);
+        document.querySelectorAll('.run-g .rg-box').forEach(function (b) {
+          b.querySelector('rect.bx').classList.toggle('on', b === this);
+        }, this);
+      });
+      g.addEventListener('mouseenter', function () { light(n.id, true); });
+      g.addEventListener('mouseleave', function () { light(n.id, false); });
+      svg.appendChild(g);
+    });
+    graphEl.appendChild(svg);
+  }
+  function select(id) {
+    var run = null;
+    for (var i = 0; i < RUNS.length; i++) if (RUNS[i].id === id) run = RUNS[i];
+    if (!run) run = RUNS[0];
+    document.querySelectorAll('.run-row').forEach(function (row) {
+      row.classList.toggle('on', row.getAttribute('data-run') === run.id);
+    });
+    draw(run);
+  }
+  if (listEl) listEl.addEventListener('click', function (e) {
+    var row = e.target.closest ? e.target.closest('.run-row') : null;
+    if (row) select(row.getAttribute('data-run'));
+  });
+  var more = document.getElementById('runs-more');
+  if (more) more.addEventListener('click', function () { if (listEl) listEl.classList.remove('capped'); });
+  var on = document.querySelector('.run-row.on');
+  select(on ? on.getAttribute('data-run') : RUNS[0].id);
+})();
+"""
+
 _JS = """
 (function () {
   // ---- hash router: one view at a time (Mnemosyne-console style)
-  var VIEWS = ['overview', 'teams', 'create', 'memory', 'profiles', 'cron'];
+  var VIEWS = ['overview', 'teams', 'runs', 'create', 'memory', 'profiles', 'cron'];
   function show(name) {
     if (VIEWS.indexOf(name) < 0) name = 'overview';
     document.querySelectorAll('.view').forEach(function (v) { v.classList.remove('on'); });
@@ -847,10 +1269,79 @@ def collect(home: Path, team_filter: str | None = None) -> dict:
         data["cron"] = cron911.scan(home)
     except Exception:  # noqa: BLE001 — degrade: dashboard stays usable
         data["cron"] = None
+    try:
+        data["runs"] = [runs.graph_of(r) for r in runs.recent_runs(home, limit=20)]
+    except Exception:  # noqa: BLE001
+        data["runs"] = []
     return data
 
 
-def render_html(data: dict, title: str = "TeamOps Fleet Dashboard", build_id: str = "") -> str:
+def _run_count_text(rec: dict) -> str:
+    c = rec.get("counts") or {}
+    parts = [f"{c.get('nodes', 0)} nodes"]
+    for key in ("done", "running", "failed"):
+        if c.get(key):
+            parts.append(f"{c[key]} {key}")
+    return " · ".join(parts)
+
+
+def _run_time_ago(started) -> str:
+    if not started:
+        return "—"
+    try:
+        ts = datetime.fromisoformat(str(started).replace("Z", "+00:00"))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        secs = max(0, (datetime.now(timezone.utc) - ts).total_seconds())
+    except ValueError:
+        return "—"
+    if secs < 60:
+        return "now"
+    if secs < 3600:
+        return f"{int(secs // 60)}m"
+    if secs < 86400:
+        return f"{int(secs // 3600)}h"
+    return f"{int(secs // 86400)}d"
+
+
+def _runs_view_html(runs: list[dict]) -> str:
+    """Runs tab: list column (server-rendered rows) + graph stage (JS draws it)."""
+    if not runs:
+        return ('<div class="empty">No runs recorded yet — run a team, deploy a '
+                'blueprint or start a dashboard action to see its workflow here. '
+                '(Sources: dashboard action logs, team logs, canonical run records.)</div>')
+    rows: list[str] = []
+    cap = 10
+    for i, rec in enumerate(runs):
+        rid = _esc(rec.get("id", f"run-{i}"))
+        title = _esc(rec.get("title") or "Run")
+        state = _esc(rec.get("state") or "unknown")
+        on = ' on' if i == 0 else ""
+        slot = ' data-run-slot="more"' if i >= cap else ""
+        after = ' data-show-after="1"' if i >= cap else ""
+        rows.append(
+            f'<button class="run-row{on}" data-run="{rid}"{slot}{after}>'
+            f'<span class="dot s-{state}"></span>'
+            f'<span class="rt">{title}</span>'
+            f'<span class="rc">{_esc(_run_count_text(rec))}</span>'
+            f'<span class="ra">{_esc(_run_time_ago(rec.get("started")))}</span></button>'
+        )
+    more = ('<button class="runs-more" id="runs-more">Show all</button>' if len(runs) > cap else "")
+    list_html = (f'<div class="runs-list{" capped" if len(runs) > cap else ""}" id="runs-list">'
+                 + "".join(rows) + more + "</div>")
+    stage = ('<div class="runs-stage">'
+             '<div class="runs-graph" id="runs-graph"><div class="empty">Select a run →</div></div>'
+             '<div class="runs-detail" id="runs-detail">'
+             '<div class="d-none">Pick a run on the left. Each box is one node; a dashed '
+             'edge pulses into a running node.</div></div>'
+             '<p class="legend-runs">state dot: <b>accent = running</b> · <b style="color:var(--err)">red = failed</b> · '
+             '<b style="color:var(--ok)">green = done</b> · read-only — nothing here changes a run</p>'
+             '</div>')
+    return '<div class="runs-layout">' + list_html + stage + "</div>"
+
+
+def render_html(data: dict, title: str = "TeamOps Fleet Dashboard", build_id: str = "",
+                theme: dict | None = None) -> str:
     """Render the complete standalone HTML document (rail + tabbed views)."""
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     home = _esc(data.get("home", ""))
@@ -863,6 +1354,13 @@ def render_html(data: dict, title: str = "TeamOps Fleet Dashboard", build_id: st
     tpl_list = [n for n in (blueprints.get("templates", []) or [])
                 if n not in ("job-cards", "local", "customer")]
     build = _esc(build_id or "local")
+    theme_css = _theme_root_css(theme)
+    theme_label = ""
+    if theme:
+        theme_label = _esc(theme.get("label") or theme.get("name") or "")
+    run_records = data.get("runs") or []
+    runs_html = _runs_view_html(run_records)
+    runs_json = json.dumps(run_records, separators=(",", ":")).replace("</", "<\\/")
 
     # 24h buckets come from execution_stats' recent* counters; total/ok/failed
     # are all-time and shown as such in the profile table.
@@ -1177,7 +1675,7 @@ def render_html(data: dict, title: str = "TeamOps Fleet Dashboard", build_id: st
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{_esc(title)} — {home}</title>
-<style>{_CSS}</style>
+<style>{_CSS}{_RUN_CSS}</style>{f'<style id="teamops-theme">{theme_css}</style>' if theme_css else ''}
 </head>
 <body>
 <aside class="rail">
@@ -1192,13 +1690,14 @@ def render_html(data: dict, title: str = "TeamOps Fleet Dashboard", build_id: st
   <nav class="nav">
     <a href="#/overview" class="on"><span class="sig">OV</span>Overview</a>
     <a href="#/teams"><span class="sig">TE</span>Teams</a>
+    <a href="#/runs"><span class="sig">RN</span>Runs</a>
     <a href="#/create"><span class="sig">CR</span>Create</a>
     <a href="#/memory"><span class="sig">ME</span>Memory</a>
     <a href="#/profiles"><span class="sig">PF</span>Profiles</a>
     <a href="#/cron"><span class="sig">CK</span>Cron health</a>
   </nav>
   <div class="foot">
-    <b>BUILD {build}</b><br>
+    <b>BUILD {build}</b>{f'<br>theme {theme_label}' if theme_label else ''}<br>
     {len(profiles)} profiles · {len(teams)} teams · {len(ephemeral)} ephemeral<br>
     {home}<br>{now}
   </div>
@@ -1227,6 +1726,15 @@ def render_html(data: dict, title: str = "TeamOps Fleet Dashboard", build_id: st
       <p>Pick a team on the left to see ITS diagram — one at a time. One-shot script teams have zero resident RAM and start on demand; deployed profile teams run on their crons 24/7. Click a node, or click ⇄ on any handoff job to make the line move.</p>
     </div>
     {teams_html}
+  </section>
+
+  <section class="view" id="view-runs">
+    <div class="pagehead">
+      <div class="eyebrow">Runs &amp; workflow</div>
+      <h1>Workflow view</h1>
+      <p>Recent jobs drawn as a graph: one frontier to a row, edges are dependencies (a dashed edge pulses into a running node). Read-only — nothing here changes a run.</p>
+    </div>
+    {runs_html}
   </section>
 
   <section class="view" id="view-create">
@@ -1278,7 +1786,9 @@ def render_html(data: dict, title: str = "TeamOps Fleet Dashboard", build_id: st
     <button id="toast-close">Close</button>
   </div>
 </div>
+<script>window.__RUNS__ = {runs_json};</script>
 <script>{_JS}</script>
+<script>{_RUN_JS}</script>
 </body>
 </html>
 """
@@ -1297,7 +1807,8 @@ def write_dashboard(home: Path, team_filter: str | None = None,
     out_path.parent.mkdir(parents=True, exist_ok=True)
     title = f"TeamOps Fleet Dashboard{f' — {team_filter}' if team_filter else ''}"
     build_id = f"{len(data.get('profiles', []))}p-{len(data.get('teams', {}))}t-{datetime.now(timezone.utc).strftime('%H%M')}"
-    text = render_html(data, title=title, build_id=build_id)
+    text = render_html(data, title=title, build_id=build_id,
+                       theme=load_hermes_theme(home))
     out_path.write_text(text, encoding="utf-8")
     cron = data.get("cron") or {}
     return {

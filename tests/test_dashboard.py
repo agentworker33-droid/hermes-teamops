@@ -163,3 +163,82 @@ def test_cli_golden_html_default_mode_no_browser_req(capsys, tmp_path):
     rc = cli.main(["teams", "status", "--html", "--home", str(home)])
     assert rc == 0
     assert json.loads(capsys.readouterr().out)["success"] is True
+
+
+# ---- theme bridging (Task 2.13) ----
+
+def test_render_html_theme_override_injected(tmp_path):
+    home = _home_with_fleet(tmp_path)
+    data = dashboard.collect(home)
+    theme = {"name": "cyberpunk", "label": "Cyberpunk", "bg": "#000a00",
+             "mid": "#00ff41", "fg": "#ffffff", "glow": "rgba(0,255,65,.3)",
+             "overrides": {"success": "#00ff88", "warning": "#ffd700", "destructive": "#ff0055"}}
+    text = dashboard.render_html(data, theme=theme)
+    assert 'id="teamops-theme"' in text
+    assert "--bg: #000a00" in text
+    assert "--txt: #00ff41" in text
+    assert "--accent: #00ff41" in text
+    assert "theme Cyberpunk" in text  # rail foot label
+
+
+def test_render_html_no_theme_keeps_default(tmp_path):
+    home = _home_with_fleet(tmp_path)
+    data = dashboard.collect(home)
+    text = dashboard.render_html(data)
+    assert 'id="teamops-theme"' not in text
+    assert "--bg: #050505" in text  # the base :root default
+
+
+def test_load_hermes_theme_builtin(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "config.yaml").write_text("dashboard:\n  theme: mono\n")
+    theme = dashboard.load_hermes_theme(home)
+    assert theme is not None
+    assert theme["label"] == "Mono"
+    assert theme["bg"] == "#0e0e0e"
+
+
+def test_load_hermes_theme_default_teal(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "config.yaml").write_text("dashboard:\n  theme: default\n")
+    theme = dashboard.load_hermes_theme(home)
+    assert theme is not None
+    assert theme["label"] == "Hermes Teal"
+    assert theme["bg"] == "#041c1c"
+
+
+def test_load_hermes_theme_missing_or_unknown(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    assert dashboard.load_hermes_theme(home) is None  # no config
+    (home / "config.yaml").write_text("dashboard:\n  theme: does-not-exist\n")
+    assert dashboard.load_hermes_theme(home) is None  # unknown name
+
+
+def test_load_hermes_theme_user_yaml(tmp_path):
+    try:
+        import yaml  # noqa: F401
+    except ImportError:
+        import pytest
+        pytest.skip("yaml not importable")
+    home = tmp_path / "home"
+    themes_dir = home / "dashboard-themes"
+    themes_dir.mkdir(parents=True)
+    (themes_dir / "night-ops.yaml").write_text(
+        "name: night-ops\n"
+        "label: Night Ops\n"
+        "palette:\n"
+        "  background: {hex: '#101820', alpha: 1}\n"
+        "  midground: {hex: '#ffee99', alpha: 1}\n"
+        "  foreground: {hex: '#ffffff', alpha: 0}\n"
+        "colorOverrides:\n"
+        "  success: '#88ffaa'\n"
+    )
+    (home / "config.yaml").write_text("dashboard:\n  theme: night-ops\n")
+    theme = dashboard.load_hermes_theme(home)
+    assert theme is not None
+    assert theme["name"] == "night-ops"
+    assert theme["bg"] == "#101820"
+    assert theme["overrides"]["success"] == "#88ffaa"
