@@ -1,0 +1,34 @@
+{
+  "columns": [
+    "TODO",
+    "IN_PROGRESS",
+    "REVIEW",
+    "DONE"
+  ],
+  "tasks": {
+    "seed_1": {
+      "id": "seed_1",
+      "title": "First-run: map the brokerage inboxes (INBOX-*.md) and confirm each agent's SOUL matches the broker context",
+      "assignee": "boss",
+      "status": "TODO",
+      "deliverables": "Replace seed task with real work at deploy.",
+      "notes": "Seed task from the shipped vertical onboarding runbook."
+    },
+    "seed_2": {
+      "id": "seed_2",
+      "title": "Seed the shared deal kanban with the active listing pipeline",
+      "assignee": "boss",
+      "status": "TODO",
+      "deliverables": "Replace seed task with real work at deploy.",
+      "notes": "Seed task from the shipped vertical onboarding runbook."
+    },
+    "seed_3": {
+      "id": "seed_3",
+      "title": "Stand up lead-response SLA and showing coordination flow",
+      "assignee": "inside-sales",
+      "status": "TODO",
+      "deliverables": "Replace seed task with real work at deploy.",
+      "notes": "Seed task from the shipped vertical onboarding runbook."
+    }
+  }
+}

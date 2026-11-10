@@ -1,0 +1,163 @@
+{
+  "version": "0.1",
+  "edges": [
+    {
+      "from": "executor",
+      "to": "risk-manager",
+      "via": "#2 Signal",
+      "artifact": "INBOX-risk-manager.md"
+    },
+    {
+      "from": "risk-manager",
+      "to": "executor",
+      "via": "#2 Signal",
+      "artifact": "INBOX-executor.md"
+    },
+    {
+      "from": "monitor",
+      "to": "boss",
+      "via": "#2 Signal",
+      "artifact": "INBOX-boss.md"
+    },
+    {
+      "from": "risk-manager",
+      "to": "launch-sniper",
+      "via": "#2 Signal",
+      "artifact": "INBOX-launch-sniper.md"
+    },
+    {
+      "from": "risk-manager",
+      "to": "polymarket-specialist",
+      "via": "#2 Signal",
+      "artifact": "INBOX-polymarket-specialist.md"
+    },
+    {
+      "from": "risk-manager",
+      "to": "yield-farmer",
+      "via": "#2 Signal",
+      "artifact": "INBOX-yield-farmer.md"
+    },
+    {
+      "from": "yield-farmer",
+      "to": "risk-manager",
+      "via": "#2 Signal",
+      "artifact": "INBOX-risk-manager.md"
+    },
+    {
+      "from": "launch-sniper",
+      "to": "boss",
+      "via": "#2 Signal",
+      "artifact": "INBOX-boss.md"
+    },
+    {
+      "from": "polymarket-specialist",
+      "to": "boss",
+      "via": "#2 Signal",
+      "artifact": "INBOX-boss.md"
+    },
+    {
+      "from": "executor",
+      "to": "analyst",
+      "via": "#5 Loopback",
+      "artifact": "FEEDBACK-analyst.md (executor/fill_feedback)"
+    },
+    {
+      "from": "monitor",
+      "to": "risk-manager",
+      "via": "#5 Loopback",
+      "artifact": "FEEDBACK-risk-manager.md (monitor/anomaly)"
+    },
+    {
+      "from": "monitor",
+      "to": "risk-manager",
+      "via": "#2 Signal",
+      "artifact": "FEEDBACK-risk-manager.md (monitor/dd_recovery)"
+    },
+    {
+      "from": "risk-manager",
+      "to": "boss",
+      "via": "#3 Request",
+      "artifact": "INBOX-boss.md"
+    },
+    {
+      "from": "risk-manager",
+      "to": "boss",
+      "via": "#2 Signal",
+      "artifact": "INBOX-boss.md"
+    },
+    {
+      "from": "analyst",
+      "to": "risk-manager",
+      "via": "#6 Tournament",
+      "artifact": "tournament/strategy_incubation/<run_id>"
+    },
+    {
+      "from": "boss",
+      "to": "risk-manager",
+      "via": "#2 Signal",
+      "artifact": "orchestration/neutralized/<tick>"
+    },
+    {
+      "from": "boss",
+      "to": "portfolio-manager",
+      "via": "#2 Signal",
+      "artifact": "orchestration/allocations/<tick>"
+    },
+    {
+      "from": "boss",
+      "to": "executor",
+      "via": "#1 Handoff",
+      "artifact": "orchestration/optimized/<tick>"
+    },
+    {
+      "from": "boss",
+      "to": "executor",
+      "via": "#1 Handoff",
+      "artifact": "orchestration/netted_orders/<tick>"
+    },
+    {
+      "from": "monitor",
+      "to": "risk-manager",
+      "via": "#2 Signal",
+      "artifact": "FAST_SHOCK.md (monitor/shock)"
+    },
+    {
+      "from": "researcher",
+      "to": "analyst",
+      "via": "#8 Verifier",
+      "artifact": "oos_env/<run_id>"
+    },
+    {
+      "from": "monitor",
+      "to": "risk-manager",
+      "via": "#2 Signal",
+      "artifact": "INBOX-risk-manager.md"
+    },
+    {
+      "from": "analyst",
+      "to": "executor",
+      "via": "#2 Signal",
+      "artifact": "INBOX-executor.md (analyst/ofi_signal)"
+    },
+    {
+      "from": "executor",
+      "to": "boss",
+      "via": "#1 Handoff",
+      "artifact": "INBOX-boss.md (executor/execution_report)"
+    }
+  ],
+  "shared_files": [
+    "FAST_SHOCK.md",
+    "FEEDBACK-analyst.md",
+    "FEEDBACK-risk-manager.md",
+    "INBOX-boss.md",
+    "INBOX-executor.md",
+    "INBOX-launch-sniper.md",
+    "INBOX-polymarket-specialist.md",
+    "INBOX-risk-manager.md",
+    "INBOX-yield-farmer.md",
+    "oos_env",
+    "orchestration",
+    "tournament"
+  ]
+}

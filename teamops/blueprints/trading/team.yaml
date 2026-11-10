@@ -1,0 +1,80 @@
+name: trading
+version: 0.1.0
+description: Full AI Trading team — 7 core fund agents + 3 satellites (polymarket,
+  launch sniper, yield farmer) from the shipped onboard-trading.sh vertical. Paper-trading
+  desk patterns included via the mesh edges.
+roles:
+- name: boss
+  title: Fund CIO — briefs, regime, fan-in/out
+  toolsets:
+  - file
+  - terminal
+  - web
+  - delegation
+  - cronjob
+  soul: souls/boss.md
+- name: researcher
+  title: Alpha-scout — news, on-chain, whale movements
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/researcher.md
+- name: analyst
+  title: Bull/bear debate synthesis — trade ideas
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/analyst.md
+- name: executor
+  title: Execution engine — positions, fills, stale sweep
+  toolsets:
+  - file
+  - terminal
+  soul: souls/executor.md
+- name: risk-manager
+  title: Market/operational/model risk — VaR, kill switch
+  toolsets:
+  - file
+  - terminal
+  - web
+  soul: souls/risk-manager.md
+- name: portfolio-manager
+  title: Overseer — allocation, reconciliation, reports
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/portfolio-manager.md
+- name: monitor
+  title: 24/7 health, market structure, security audit
+  toolsets:
+  - file
+  - terminal
+  - web
+  soul: souls/monitor.md
+- name: polymarket-specialist
+  title: Event-based prediction-market trading (satellite)
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/polymarket-specialist.md
+- name: launch-sniper
+  title: New token launch sniper (satellite)
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/launch-sniper.md
+- name: yield-farmer
+  title: DeFi vault management (satellite)
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/yield-farmer.md
+shared:
+  kanban: assets/kanban.json
+  mesh: assets/mesh.json

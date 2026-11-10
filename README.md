@@ -18,8 +18,10 @@ Build worklog: `WORKLOG.md` (cron shifts append here after every task).
 Status: **D2 — Watch/Fix/Grow implemented + tested + Task 2.8 web dashboard
 (`status --html`, interactive mesh graph) + live dashboard server
 (`teams dashboard`, daemon + /health + stop) + Task 2.9 OPT-IN auto model-swap
-(`model-scan --swap --pool a,b [--apply]`, changelog + `model-rollback`).
-90 tests. Next: stretch 2.10–2.12 (vertical ports, VPS, Twilio) then D3 ship
+(`model-scan --swap --pool a,b [--apply]`, changelog + `model-rollback`) + Task
+2.10 ported vertical blueprints (`insurance-claims`, `real-estate`, `trading`
+— the shipped onboard-*.sh teams) + rollback empty-dir fix.
+99 tests. Next: stretch 2.11–2.12 (VPS, Twilio) then D3 ship
 (PR, video, form).**
 
 ## Install
@@ -76,8 +78,15 @@ Dress-rehearsed on a temp HERMES_HOME in D2.6.
 A blueprint is a directory: `team.yaml` (roles/crons), `souls/<role>.md`,
 `crons.yaml`, `assets/kanban.json`, `assets/mesh.json`, `verify.yaml`.
 Baked v1: `sales` (6 roles), `property-mgmt` (owner / tenant-line boundary /
-maintenance coordinator / books), plus the `fixtures/billing-agent` fallback
-used by the Agent Factory when the live lane is unavailable.
+maintenance coordinator / books), `lawn-care-ops` (factory-materialized), plus
+three **ported verticals** from the shipped onboarding runbooks: `insurance-claims`
+(13 roles — claims-manager, intake, triage, coverage, adjuster, fraud, reserves,
+compliance, monitor + 4 satellites), `real-estate` (14 roles — broker + listing/
+buyer agents, inside sales, transaction coordinator, marketing, ops, client care,
+document processor, market intelligence + industry tier), `trading` (10 roles —
+boss, researcher, analyst, executor, risk-manager, portfolio-manager, monitor +
+polymarket/launch-sniper/yield-farmer satellites). The `fixtures/billing-agent`
+fallback used by the Agent Factory when the live lane is unavailable.
 
 ## Modules
 
@@ -101,7 +110,9 @@ used by the Agent Factory when the live lane is unavailable.
 python3 -m pytest -q
 ```
 
-90 tests: blueprint loader, Deploy Guard (mocked hermes), factory fallback,
+99 tests: blueprint loader (+ structural integrity for all 6 baked blueprints:
+roles→souls, cron→role references, unique prefixed cron names, mesh→role edges,
+kanban assignees), Deploy Guard (mocked hermes), factory fallback,
 fleet/cron911/modelguard/standup/meshbridge/dashboard/server against a fake HERMES_HOME
 built with the real jobs.json + executions.db schema, plus a manifest-coherence
 test pinning plugin.yaml ⇄ schemas ⇄ handlers and model-swap pool/rollback tests.

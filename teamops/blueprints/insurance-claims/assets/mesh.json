@@ -1,0 +1,157 @@
+{
+  "version": "0.1",
+  "edges": [
+    {
+      "from": "intake-specialist",
+      "to": "triage-analyst",
+      "via": "#1 Handoff",
+      "artifact": "INBOX-triage-analyst.md"
+    },
+    {
+      "from": "triage-analyst",
+      "to": "coverage-analyst",
+      "via": "#1 Handoff",
+      "artifact": "INBOX-coverage-analyst.md"
+    },
+    {
+      "from": "coverage-analyst",
+      "to": "adjuster",
+      "via": "#1 Handoff",
+      "artifact": "INBOX-adjuster.md"
+    },
+    {
+      "from": "adjuster",
+      "to": "reserve-setter",
+      "via": "#1 Handoff",
+      "artifact": "INBOX-reserve-setter.md"
+    },
+    {
+      "from": "adjuster",
+      "to": "fraud-analyst",
+      "via": "#2 Signal",
+      "artifact": "INBOX-fraud-analyst.md"
+    },
+    {
+      "from": "fraud-analyst",
+      "to": "claims-manager",
+      "via": "#2 Signal",
+      "artifact": "INBOX-claims-manager.md"
+    },
+    {
+      "from": "reserve-setter",
+      "to": "claims-manager",
+      "via": "#1 Handoff",
+      "artifact": "INBOX-claims-manager.md"
+    },
+    {
+      "from": "claims-manager",
+      "to": "compliance-officer",
+      "via": "#1 Handoff",
+      "artifact": "INBOX-compliance-officer.md"
+    },
+    {
+      "from": "compliance-officer",
+      "to": "claims-manager",
+      "via": "#1 Handoff",
+      "artifact": "INBOX-claims-manager.md"
+    },
+    {
+      "from": "claims-manager",
+      "to": "intake-specialist",
+      "via": "#5 Loopback",
+      "artifact": "FEEDBACK-intake-specialist.md"
+    },
+    {
+      "from": "adjuster",
+      "to": "coverage-analyst",
+      "via": "#5 Loopback",
+      "artifact": "FEEDBACK-coverage-analyst.md"
+    },
+    {
+      "from": "adjuster",
+      "to": "litigation-strategist",
+      "via": "#1 Handoff",
+      "artifact": "INBOX-litigation-strategist.md"
+    },
+    {
+      "from": "litigation-strategist",
+      "to": "claims-manager",
+      "via": "#2 Signal",
+      "artifact": "INBOX-claims-manager.md"
+    },
+    {
+      "from": "adjuster",
+      "to": "subrogation-specialist",
+      "via": "#1 Handoff",
+      "artifact": "INBOX-subrogation-specialist.md"
+    },
+    {
+      "from": "subrogation-specialist",
+      "to": "claims-manager",
+      "via": "#2 Signal",
+      "artifact": "INBOX-claims-manager.md"
+    },
+    {
+      "from": "catastrophe-modeler",
+      "to": "triage-analyst",
+      "via": "#2 Signal",
+      "artifact": "INBOX-triage-analyst.md"
+    },
+    {
+      "from": "catastrophe-modeler",
+      "to": "claims-manager",
+      "via": "#1 Handoff",
+      "artifact": "INBOX-claims-manager.md"
+    },
+    {
+      "from": "actuarial-co-pilot",
+      "to": "reserve-setter",
+      "via": "#1 Handoff",
+      "artifact": "INBOX-reserve-setter.md"
+    },
+    {
+      "from": "intake-specialist",
+      "to": "adjuster",
+      "via": "#1 Handoff",
+      "artifact": "mnemosyne:stp_claim/<claim_id>"
+    },
+    {
+      "from": "coverage-analyst",
+      "to": "adjuster",
+      "via": "#2 Signal",
+      "artifact": "mnemosyne:challenge/<claim_id>"
+    },
+    {
+      "from": "adjuster",
+      "to": "coverage-analyst",
+      "via": "#2 Signal",
+      "artifact": "mnemosyne:challenge/<claim_id>"
+    },
+    {
+      "from": "triage-analyst",
+      "to": "adjuster",
+      "via": "#4 Shared-Context",
+      "artifact": "mnemosyne:cat_framework/<event_id>"
+    },
+    {
+      "from": "adjuster",
+      "to": "reserve-setter",
+      "via": "#4 Shared-Context",
+      "artifact": "mnemosyne:cat_framework/<event_id>"
+    }
+  ],
+  "shared_files": [
+    "FEEDBACK-coverage-analyst.md",
+    "FEEDBACK-intake-specialist.md",
+    "INBOX-adjuster.md",
+    "INBOX-claims-manager.md",
+    "INBOX-compliance-officer.md",
+    "INBOX-coverage-analyst.md",
+    "INBOX-fraud-analyst.md",
+    "INBOX-litigation-strategist.md",
+    "INBOX-reserve-setter.md",
+    "INBOX-subrogation-specialist.md",
+    "INBOX-triage-analyst.md",
+    "mnemosyne:cat_framework"
+  ]
+}

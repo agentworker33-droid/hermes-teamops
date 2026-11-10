@@ -1,0 +1,340 @@
+crons:
+- name: insurance-claims-claims-manager-morning-brief
+  schedule: 0 7 * * *
+  profile: claims-manager
+  prompt: 'Morning claims briefing: (1) Read all agent statuses via mnemosyne_shared_recall(limit=20,query=''status_update
+    OR BLOCKER''). (2) Read the team Mesh Map bus: scan workspace/INBOX-*.md and workspace/FEEDBACK-*.md
+    for unread signals/loopbacks since yesterday — surface any fraud threshold breach,
+    litigation trigger, CAT event, compliance breach, or coverage dispute items in
+    the Team Pulse. (3) NAV (total reserves), overnight paid claims, claims_state,
+    Monitor alerts, strategy performance vs target. Include Team Pulse. Send to owner
+    via Twilio SMS.'
+- name: insurance-claims-claims-manager-eod-summary
+  schedule: 0 18 * * *
+  profile: claims-manager
+  prompt: 'EOD claims summary: All open claims, new FNOLs, reserves set, fraud alerts,
+    litigation referrals, subrogation recoveries, compliance approvals, any limit
+    breaches. Log to Mnemosyne claims_manager_decisions.'
+- name: insurance-claims-claims-manager-weekly-reserves
+  schedule: 0 9 * * 1
+  profile: claims-manager
+  prompt: 'Weekly reserve review: (1) Reserve adequacy by line of business, accident
+    year. (2) IBNR trends. (3) Actuarial-co-pilot review (scale+). (4) Flag deficiencies/redundancies.
+    (5) ENFORCE LITIGATION BUDGET CAP: read claims_state.limits.litigation_budget_pct
+    from Mnemosyne; if any claim exceeds, auto-deny new litigation spend. Log to claims_manager_decisions.'
+- name: insurance-claims-claims-manager-monthly-board-report
+  schedule: 0 10 1 * *
+  profile: claims-manager
+  prompt: 'Monthly board report: Loss ratios, reserve development, fraud trends, litigation
+    portfolio, subrogation recovery, compliance metrics, CAT exposure. Draft board
+    memo.'
+- name: insurance-claims-claims-manager-weekly-learning
+  schedule: 0 20 * * 0
+  profile: claims-manager
+  prompt: 'Weekly learning consolidation: Pull all agent learnings/incidents from
+    Mnemosyne (veracity=stated). Distill into updated playbooks, claim handling notes,
+    shared best-practices. Push to shared memory surface so every agent benefits next
+    week.'
+- name: insurance-claims-claims-manager-incident-retro
+  schedule: 0 14 1 * *
+  profile: claims-manager
+  prompt: 'Incident retro: Review all flagged breaches/near-misses/anomalies from
+    last month. Root-cause each, update handoff/escalation playbooks, confirm Claims-Manager
+    limits still appropriate. Log to claims_manager_decisions.'
+- name: insurance-claims-intake-daily-fnol-summary
+  schedule: 0 6 * * *
+  profile: intake-specialist
+  prompt: 'Daily FNOL summary: Volume by channel, STP rate, avg intake time, document
+    completeness rate, policy lookup success rate. Output to Mnemosyne intake_metrics.'
+- name: insurance-claims-intake-fnol-processing
+  schedule: '*/15 * * * *'
+  profile: intake-specialist
+  prompt: 'Process new FNOL submissions: Extract structured data, validate policy,
+    create claim record, route to triage-analyst. STP candidates auto-approve if confidence
+    >= tier threshold.'
+- name: insurance-claims-triage-daily-severity
+  schedule: 0 5 * * *
+  profile: triage-analyst
+  prompt: 'Daily triage: Severity distribution, complexity scores, path recommendations,
+    adjuster type assignments. Output to Mnemosyne triage_metrics.'
+- name: insurance-claims-triage-hourly-scan
+  schedule: '*/30 * * * *'
+  profile: triage-analyst
+  prompt: 'Hourly scan: New FNOLs since last run, re-triage any with new info, escalate
+    CAT claims to catastrophe-modeler. Write triage handoffs.'
+- name: insurance-claims-coverage-daily-opinions
+  schedule: 0 7 * * *
+  profile: coverage-analyst
+  prompt: 'Daily coverage opinions: All claims needing coverage analysis — policy
+    provisions, exclusions, conditions, limits, deductibles. Write coverage_opinion
+    handoffs.'
+- name: insurance-claims-coverage-dispute-monitor
+  schedule: '*/10 * * * *'
+  profile: coverage-analyst
+  prompt: 'Coverage dispute monitor: Check for new disputes, adjuster counters. Escalate
+    to Claims-Manager if > 48h unresolved.'
+- name: insurance-claims-adjuster-daily-workload
+  schedule: 0 8 * * *
+  profile: adjuster
+  prompt: 'Daily workload: Assigned claims, pending activities, settlement authority
+    utilization, cycle time by severity. Output to Mnemosyne adjuster_metrics.'
+- name: insurance-claims-adjuster-claim-processing
+  schedule: '*/5 * * * *'
+  profile: adjuster
+  prompt: 'Process assigned claims: Liability assessment, damage evaluation, reserve
+    recommendation, fraud flag check, subrogation identification. Write adjustment
+    handoffs.'
+- name: insurance-claims-adjuster-position-health
+  schedule: '*/10 * * * *'
+  profile: adjuster
+  prompt: 'Claim health check: Verify reserves adequate, activities on track, no stale
+    claims > 30d without activity. Alert Claims-Manager on issues.'
+- name: insurance-claims-adjuster-severity-model
+  schedule: 0 9 * * *
+  profile: adjuster
+  prompt: 'Severity prediction sweep (Severity Prediction Protocol): Score severity
+    band (LOW/MEDIUM/HIGH/CATASTROPHIC) for every assigned claim from claim_type,
+    exposure, injury indicators, attorney involvement, damage estimate. Escalate reserve
+    review on any band crossing (MEDIUM→HIGH etc.) — never wait for the 90-day diary.
+    Log predicted band vs drivers to Mnemosyne adjuster_metrics; calibrate feature
+    weights quarterly against final paid. Signal INBOX-reserve-setter.md with band
+    + confidence + top-3 drivers on every recommendation.'
+- name: insurance-claims-fraud-daily-scan
+  schedule: 0 6 * * *
+  profile: fraud-analyst
+  prompt: 'Daily fraud scan: All new claims against NICB, ISO ClaimSearch, LexisNexis.
+    Score fraud indicators. Write fraud alerts for scores > tier threshold.'
+- name: insurance-claims-fraud-continuous-monitor
+  schedule: '*/20 * * * *'
+  profile: fraud-analyst
+  prompt: 'Continuous monitor: Re-score claims with new info, monitor SIU referrals,
+    track organized ring patterns. Alert on score escalation.'
+- name: insurance-claims-fraud-network-sweep
+  schedule: 0 7 * * 1
+  profile: fraud-analyst
+  prompt: 'Fraud network graph sweep (Fraud Network Detection Protocol): Build claim
+    graph (claimants, providers, attorneys, vehicles, addresses, phones) from last
+    30 days. Flag nodes by degree, clustering, star topology, filing burst. Escalate
+    ANY ring candidate (>=3 connected suspicious nodes or hub on >=3 claims) to Adjuster
+    with shared-attribute evidence + to Claims-Manager on confirmed rings. Maintain
+    precision log — confirmed fraud vs flagged-and-cleared; if precision < 40% raise
+    suspicion threshold. Never auto-deny on graph suspicion alone.'
+- name: insurance-claims-reserve-daily-setting
+  schedule: 0 7 * * *
+  profile: reserve-setter
+  prompt: 'Daily reserve setting: Case reserves for new claims, expense reserves,
+    review adequacy. Write reserve handoffs.'
+- name: insurance-claims-reserve-weekly-adequacy
+  schedule: 0 10 * * 1
+  profile: reserve-setter
+  prompt: 'Weekly adequacy: Run actuarial formulas, compare case vs formula, flag
+    deficiencies. Actuarial-co-pilot review (scale+). Output to Mnemosyne reserve_metrics.'
+- name: insurance-claims-reserve-monthly-review
+  schedule: 0 10 1 * *
+  profile: reserve-setter
+  prompt: 'Monthly reserve review: Development triangles, IBNR, trend analysis, redundancy
+    check. Report to Claims-Manager.'
+- name: insurance-claims-compliance-daily-review
+  schedule: 0 8 * * *
+  profile: compliance-officer
+  prompt: 'Daily compliance review: Claims > \$100K (24h SLA), claims < \$100K (72h
+    SLA), fair claims practices, prompt payment, bad faith risk. Write compliance
+    handoffs.'
+- name: insurance-claims-compliance-regulatory-calendar
+  schedule: 0 4 * * *
+  profile: compliance-officer
+  prompt: 'Regulatory calendar: Check state DOI bulletins, NAIC updates, fair claims
+    practice amendments, prompt payment law changes. Alert Claims-Manager.'
+- name: insurance-claims-monitor-health-check
+  schedule: '* * * * *'
+  profile: monitor
+  prompt: 'Health check: All APIs (Guidewire, ISO, NICB, LexisNexis, CoreLogic, FEMA,
+    NOAA), Mnemosyne, disk/memory. Write health_checks. Alert on warnings via Twilio
+    SMS to Claims-Manager.'
+- name: insurance-claims-monitor-daily-infra
+  schedule: 0 3 * * *
+  profile: monitor
+  prompt: 'Daily infrastructure report: Uptime %, latency percentiles, error rates,
+    alert summary. Send to Claims-Manager.'
+- name: insurance-claims-monitor-api-quality
+  schedule: '*/15 * * * *'
+  profile: monitor
+  prompt: 'API feed quality: Verify all price/oracle feeds updated within tolerance
+    (no gaps > 5min). Detect stale/diverged data. Alert Claims-Manager on bad data
+    — stale data must NOT trigger claim actions. End every report with explicit status
+    line: VERIFIED (all checks actually performed) or UNABLE TO VERIFY — required
+    tooling unavailable (name the specific check that could not run). Never report
+    an all-clear you could not actually confirm.'
+- name: insurance-claims-litigation-daily-strategy
+  schedule: 0 7 * * *
+  profile: litigation-strategist
+  prompt: 'Daily litigation strategy: New litigation referrals, strategy assignment,
+    budget tracking, expert witness coordination, discovery progress. Write litigation
+    handoffs.'
+- name: insurance-claims-litigation-daily-review
+  schedule: 0 18 * * *
+  profile: litigation-strategist
+  prompt: 'Daily litigation review: Costs vs budget, exposure changes, settlement
+    opportunities, trial dates. Alert Claims-Manager on budget overruns.'
+- name: insurance-claims-subrogation-daily-scan
+  schedule: 0 8 * * *
+  profile: subrogation-specialist
+  prompt: 'Daily subrogation scan: New claims with recovery potential, liable party
+    identification, evidence collection, statute of limitations tracking. Write subrogation
+    handoffs.'
+- name: insurance-claims-subrogation-weekly-optimize
+  schedule: 0 10 * * 1
+  profile: subrogation-specialist
+  prompt: 'Weekly optimization: Portfolio recovery rate, cost-to-pursue analysis,
+    arbitration vs litigation decisions, recovery strategy updates. Report to Claims-Manager.'
+- name: insurance-claims-catastrophe-daily-monitor
+  schedule: 0 6 * * *
+  profile: catastrophe-modeler
+  prompt: 'Daily CAT monitor: NOAA, NHC, USGS, FEMA feeds. Detect new events, model
+    severity, estimate claim counts. Write CAT handoffs.'
+- name: insurance-claims-catastrophe-active-event
+  schedule: '*/30 * * * *'
+  profile: catastrophe-modeler
+  prompt: 'Active CAT event: Real-time tracking, claim intake surge management, triage
+    protocol activation, reserve methodology override. Alert Claims-Manager.'
+- name: insurance-claims-actuarial-monthly-review
+  schedule: 0 10 1 * *
+  profile: actuarial-co-pilot
+  prompt: 'Monthly actuarial review: Reserve adequacy by line/year, development factors,
+    IBNR, trend assumptions, deficiency/redundancy. Write actuarial handoffs.'
+- name: insurance-claims-actuarial-weekly-report
+  schedule: 0 15 * * 5
+  profile: actuarial-co-pilot
+  prompt: 'Weekly actuarial report: Key metrics, assumption changes, model validation,
+    regulatory filing prep. Send to Reserve-Setter + Claims-Manager.'
+- name: insurance-claims-monitor-security-audit
+  schedule: 0 4 * * *
+  profile: monitor
+  prompt: 'Security audit: Verify API key scopes (no unused admin permissions), confirm
+    webhook endpoints unchanged, scan for unauthorized outbound tx in last 24h, check
+    Mnemosyne for unrecognized agent actions. Alert Claims-Manager + Fraud-Analyst
+    on ANY anomaly via Twilio SMS. End every report with an explicit status line:
+    VERIFIED (all checks actually performed) or UNABLE TO VERIFY — required tooling
+    unavailable (name the specific check that could not run). Never report an all-clear
+    you could not actually confirm.'
+- name: insurance-claims-monitor-approval-hygiene
+  schedule: 0 5 * * *
+  profile: monitor
+  prompt: 'Approval hygiene: Enumerate all API integrations granted by carrier systems.
+    Flag any integration to vendors not in the active whitelist. Recommend revocation
+    of stale (>30d unused) integrations. Log to Mnemosyne security_log. End every
+    report with an explicit status line: VERIFIED (all checks actually performed)
+    or UNABLE TO VERIFY — required tooling unavailable (name the specific check that
+    could not run). Never report an all-clear you could not actually confirm.'
+- name: insurance-claims-claims-manager-latency-profiling
+  schedule: 0 3 * * 0
+  profile: claims-manager
+  prompt: 'Latency prediction profiling: For each agent (intake-specialist, triage-analyst,
+    coverage-analyst, adjuster, fraud-analyst, reserve-setter, compliance-officer,
+    claims-manager, litigation-strategist, subrogation-specialist, catastrophe-modeler,
+    actuarial-co-pilot), measure actual token cost & latency of last 5 cron runs.
+    Separate prefill vs decode. Fit lightweight latency predictor: token_cost = f(context_len,
+    model, tool_calls). Update Mnemosyne cost_model/agent_latency with: avg_input_tokens,
+    avg_output_tokens, p50_latency_s, p95_latency_s, cost_usd_per_run. Use to validate
+    model tiering — frontier models only on IQ-critical agents, cheapest capable on
+    surveillance loops. Claims-Manager reviews weekly.'
+- name: insurance-claims-reserve-reconciliation
+  schedule: 0 1 * * *
+  profile: reserve-setter
+  prompt: 'Reconcile internal reserve book against Guidewire/Duck Creek claim records
+    + paid loss data. Flag any discrepancy > 0.1% of total reserves. Investigate stuck/failed
+    payments. Log deltas to Mnemosyne reconciliation_log. End every report with an
+    explicit status line: VERIFIED (all checks actually performed) or UNABLE TO VERIFY
+    — required tooling unavailable (name the specific check that could not run). Never
+    report an all-clear you could not actually confirm.'
+- name: insurance-claims-reserve-treasury-sweep
+  schedule: 0 11 * * 1
+  profile: reserve-setter
+  prompt: 'Treasury review: Identify idle capital not deployed to claim reserves.
+    Compare hold-yield options (T-bills, money market) vs reserve adequacy need. Recommend
+    placement or buffer size to Claims-Manager.'
+- name: insurance-claims-claims-manager-benchmark
+  schedule: 0 19 * * *
+  profile: claims-manager
+  prompt: 'Benchmark: Compute live loss ratio, expense ratio, combined ratio vs industry
+    benchmarks (NAIC, AM Best). Flag if 12m combined ratio > 100%. Write to Mnemosyne
+    claims_state_benchmarks.'
+- name: insurance-claims-claims-manager-compliance
+  schedule: 0 9 1 * *
+  profile: claims-manager
+  prompt: 'Compliance: Maintain per-jurisdiction regulatory summary, bad faith exposure
+    tracking, audit trail of all agent decisions. Cross-check against regulatory calendar.
+    Draft compliance memo for board.'
+- name: insurance-claims-mesh-orchestrator-pro
+  schedule: '*/10 * * * *'
+  profile: claims-manager
+  prompt: $_mesh_orch_prompt
+- name: insurance-claims-mesh-orchestrator-starter
+  schedule: '*/30 * * * *'
+  profile: claims-manager
+  prompt: $_mesh_orch_prompt
+- name: insurance-claims-claims-manager-inbox-sweep
+  schedule: 0 7,19 * * *
+  profile: claims-manager
+  prompt: 'Fan-in sweep: (1) Read ALL workspace/INBOX-*.md and workspace/FEEDBACK-*.md
+    files (any agent) plus mnemosyne_shared_recall(limit=30, query=''SIGNAL OR BLOCKER
+    OR LOOPBACK''). (2) For each unread line: classify as signal/handoff/loopback
+    (fraud threshold, litigation trigger, CAT event, compliance breach, coverage dispute,
+    reserve adequacy failure). (3) Acknowledge the sender, dispatch to the correct
+    owner per MESH-MAP edges, or escalate to yourself. (4) Write a short Team Pulse
+    to Mnemosyne shared (author=claims-manager, type=fanin_pulse). Only alert owner
+    via SMS for P1 items.'
+- name: insurance-claims-claims-manager-fanout-weekly
+  schedule: 0 8 * * 1
+  profile: claims-manager
+  prompt: 'Fan-out: Write a WEEKLY PRIORITIES brief to workspace/FEEDBACK-<agent>.md
+    for EVERY core agent (intake-specialist, triage-analyst, coverage-analyst, adjuster,
+    fraud-analyst, reserve-setter, compliance-officer): top 3 priorities, blockers
+    to watch, cross-agent handoff reminders per MESH-MAP (E1-E11). Also write one
+    shared copy to Mnemosyne (author=claims-manager, type=weekly_fanout). Keep it
+    under 200 words.'
+- name: insurance-claims-intake-newclaim-signal
+  schedule: '*/30 6-20 * * *'
+  profile: intake-specialist
+  prompt: 'New-claim signal push: Review FNOLs processed in the last 30 min. For each
+    routed claim, write [SIGNAL] intake-specialist: new_claim <claim_id> -> triage-analyst
+    to workspace/INBOX-triage-analyst.md (per E1). Flag any high-severity indicators
+    (attorney involvement, bodily injury, policy limit exposure) immediately instead
+    of waiting for the daily batch. If no new FNOLs, stay silent.'
+- name: insurance-claims-adjuster-status-post
+  schedule: 0 16 * * *
+  profile: adjuster
+  prompt: 'Claim-status fan-in: Post a compact claim status rollup to workspace/INBOX-claims-manager.md
+    (author=adjuster): claims moved to reserve-setting, settlement offers extended,
+    coverage disputes opened, fraud referrals made, any stale claims >30d without
+    activity. Include the [STATUS] line so the Mesh Orchestrator liveness sweep stays
+    green. Only flag exceptions in the Team Pulse.'
+- name: insurance-claims-coverage-gap-flag
+  schedule: 0 10 * * *
+  profile: coverage-analyst
+  prompt: 'Coverage-gap flag: Review coverage opinions issued since last run. For
+    any opinion with an exclusion/condition gap or coverage dispute (E11), write [SIGNAL]
+    coverage-analyst: coverage_gap <claim_id> -> adjuster to workspace/INBOX-adjuster.md
+    with the specific policy provision at issue. If no gaps, stay silent (throttle
+    rule — do NOT flag every opinion).'
+- name: insurance-claims-compliance-flag-route
+  schedule: 0 9,17 * * *
+  profile: compliance-officer
+  prompt: 'Compliance flag routing: Read workspace/INBOX-compliance-officer.md + Mnemosyne
+    compliance_review. For each completed review: post approval/rejection handoff
+    to workspace/INBOX-claims-manager.md (per E9). For any bad-faith risk, prompt-payment
+    breach, or DOI/NAIC regulatory calendar item within 72h, write [SIGNAL] compliance-officer:
+    compliance_breach -> claims-manager immediately. Clear processed lines.'
+- name: insurance-claims-reserve-change-flag
+  schedule: 0 12 * * *
+  profile: reserve-setter
+  prompt: 'Reserve-change flag: After daily reserve setting, post each new/updated
+    case reserve to workspace/INBOX-claims-manager.md (per E7) with adequacy check
+    result. If any claim''s reserve moves >15% OR falls below 1.5x expected loss,
+    write [SIGNAL] reserve-setter: reserve_adequacy_failure <claim_id> -> claims-manager
+    immediately (severity gate for the Mesh Orchestrator). Stay silent for routine
+    sets.'
+- name: insurance-claims-mesh-orchestrator
+  schedule: '*/10 * * * *'
+  profile: claims-manager
+  prompt: $_mesh_orch_prompt

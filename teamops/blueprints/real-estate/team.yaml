@@ -1,0 +1,105 @@
+name: real-estate
+version: 0.1.0
+description: 'Full AI Real Estate team — 14 roles from the shipped onboard-real-estate.sh
+  vertical: broker, listing/buyer agents, inside sales, transaction coordinator, marketing,
+  ops, client care, document processor, market intelligence plus industry-tier commercial/recruiting/investor/regional.'
+roles:
+- name: boss
+  title: Managing Broker — pipeline oversight, approvals
+  toolsets:
+  - file
+  - terminal
+  - web
+  - delegation
+  - cronjob
+  soul: souls/boss.md
+- name: listing-agent
+  title: Listings, pricing, seller representation
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/listing-agent.md
+- name: buyer-agent
+  title: Buyer representation & showings
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/buyer-agent.md
+- name: inside-sales
+  title: Lead response, CMA requests, showing coordination
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/inside-sales.md
+- name: transaction-coordinator
+  title: Deal deadlines, disclosures, risk flags
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/transaction-coordinator.md
+- name: marketing-agent
+  title: Listing campaigns, video tours, social
+  toolsets:
+  - file
+  - web
+  soul: souls/marketing-agent.md
+- name: ops-manager
+  title: Guardrails, compliance, CRM, comps
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/ops-manager.md
+- name: client-care
+  title: NPS, reviews, follow-up, referrals
+  toolsets:
+  - file
+  - web
+  soul: souls/client-care.md
+- name: document-processor
+  title: Contract scanning & inspection vision
+  toolsets:
+  - file
+  - terminal
+  soul: souls/document-processor.md
+- name: market-intelligence
+  title: Regime monitoring & CMA data
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/market-intelligence.md
+- name: commercial-agent
+  title: Commercial / investor deals (industry)
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/commercial-agent.md
+- name: recruiting-coordinator
+  title: Agent recruiting & retention (industry)
+  toolsets:
+  - file
+  - web
+  soul: souls/recruiting-coordinator.md
+- name: investor-specialist
+  title: Investor pipelines & 1031 (industry)
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/investor-specialist.md
+- name: regional-ops
+  title: Multi-office regional oversight (industry)
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/regional-ops.md
+shared:
+  kanban: assets/kanban.json
+  mesh: assets/mesh.json

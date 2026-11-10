@@ -1,0 +1,102 @@
+name: insurance-claims
+version: 0.1.0
+description: Full AI Insurance Claims team — 8 core claim agents + monitor + 4 pro
+  satellites (litigation, subrogation, catastrophe, actuarial). Pattern ported from
+  the shipped onboard-insurance-claims.sh vertical.
+roles:
+- name: claims-manager
+  title: Chief Claims Officer — reserves, compliance, board reports
+  toolsets:
+  - file
+  - terminal
+  - web
+  - delegation
+  - cronjob
+  soul: souls/claims-manager.md
+- name: intake-specialist
+  title: FNOL intake & STP routing
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/intake-specialist.md
+- name: triage-analyst
+  title: Severity triage & adjuster assignment
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/triage-analyst.md
+- name: coverage-analyst
+  title: Policy coverage opinions
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/coverage-analyst.md
+- name: adjuster
+  title: Claims adjuster — liability, reserves, severity model
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/adjuster.md
+- name: fraud-analyst
+  title: Fraud scoring & network detection
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/fraud-analyst.md
+- name: reserve-setter
+  title: Reserve setting & actuarial formulas
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/reserve-setter.md
+- name: compliance-officer
+  title: Fair claims practices & regulatory calendar
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/compliance-officer.md
+- name: monitor
+  title: Health, infra, API quality & security audit
+  toolsets:
+  - file
+  - terminal
+  - web
+  soul: souls/monitor.md
+- name: litigation-strategist
+  title: Litigation strategy & budget (satellite, pro+)
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/litigation-strategist.md
+- name: subrogation-specialist
+  title: Subrogation recovery (satellite, pro+)
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/subrogation-specialist.md
+- name: catastrophe-modeler
+  title: CAT event monitoring (satellite, pro+)
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/catastrophe-modeler.md
+- name: actuarial-co-pilot
+  title: Actuarial reserve review (satellite, pro+)
+  toolsets:
+  - file
+  - web
+  - terminal
+  soul: souls/actuarial-co-pilot.md
+shared:
+  kanban: assets/kanban.json
+  mesh: assets/mesh.json

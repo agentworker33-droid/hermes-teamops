@@ -1,0 +1,400 @@
+crons:
+- name: trading-boss-morning-fund-brief
+  schedule: 0 7 * * *
+  profile: boss
+  prompt: 'Morning fund briefing: (1) Read all agent statuses via mnemosyne_shared_recall(limit=20,query=''status_update
+    OR BLOCKER''). (2) Read the team Mesh Map bus: scan workspace/INBOX-*.md and workspace/FEEDBACK-*.md
+    for unread signals/loopbacks since yesterday — surface any kill-switch, DD>10%,
+    fill-feedback (E10a), or anomaly loopback (E10b) items in the Team Pulse. (3)
+    NAV, overnight PnL, risk_state, Monitor alerts, strategy performance vs target.
+    Include Team Pulse. Send to owner via Twilio SMS.'
+- name: trading-boss-eod-fund-summary
+  schedule: 0 18 * * *
+  profile: boss
+  prompt: 'EOD fund summary: All positions, fills, risk budget used, strategy attribution,
+    any limit breaches. Log to Mnemosyne boss_decisions.'
+- name: trading-boss-weekly-allocation
+  schedule: 0 9 * * 1
+  profile: boss
+  prompt: 'Weekly capital allocation review: (1) Strategy performance, capacity, correlation.
+    Adjust target_weights via Portfolio-Manager. Flag incubation/graduation/pruning.
+    (2) ENFORCE WEEKLY SETUP CAP: read risk_state.setups_this_week from Mnemosyne;
+    if >= 3, reject all new Analyst trade_ideas until next week (Risk-Manager will
+    block at pre-trade gate). Log setup count and any rejections to boss_decisions.'
+- name: trading-boss-monthly-investor-report
+  schedule: 0 10 1 * *
+  profile: boss
+  prompt: 'Monthly investor report: NAV, attribution, risk metrics, strategy commentary,
+    capacity update. Draft LP letter.'
+- name: trading-researcher-daily-macro
+  schedule: 0 6 * * *
+  profile: researcher
+  prompt: 'Daily macro brief: DXY, yields, ETF flows, BTC correlation regime, major
+    unlocks this week, regulatory calendar. Output to Mnemosyne macro_signals.'
+- name: trading-researcher-fast-climbing-wallets
+  schedule: 0 5 * * *
+  profile: researcher
+  prompt: 'Daily fast-climbing wallet scan: Identify wallets with top 1% 24h/7d balance
+    growth, new smart-money clusters, coordinated accumulation patterns across Solana/EVM.
+    Output to Mnemosyne.'
+- name: trading-researcher-hourly-scan
+  schedule: 0 */1 * * *
+  profile: researcher
+  prompt: 'Hourly signal scan: Whale movements (last 1h), funding rate extremes, X
+    sentiment spikes, exchange netflow anomalies. Write structured signals to Mnemosyne.'
+- name: trading-researcher-weekly-deep
+  schedule: 0 12 * * 1
+  profile: researcher
+  prompt: 'Weekly deep research: Pick one narrative (e.g., AI agents, RWA, Bitcoin
+    L2). Produce structured report: thesis, key protocols, catalysts, risks, watchlist.
+    Cite sources.'
+- name: trading-analyst-daily-retrain
+  schedule: 0 2 * * *
+  profile: analyst
+  prompt: 'Daily model retrain: Re-fit models where live PnL diverges from backtest.
+    Update model_registry. Log performance deltas to Mnemosyne.'
+- name: trading-analyst-weekly-review
+  schedule: 0 10 * * 1
+  profile: analyst
+  prompt: 'Weekly strategy review: All active strategies — live vs backtest metrics,
+    capacity utilization, correlation changes. Flag for pruning or capital increase.
+    RUN BOOTSTRAP VALIDATION: For each incubated strategy, load backtest returns from
+    Mnemosyne strategy_metrics/backtest_returns/, run bootstrap_validator.validate_strategy_for_promotion
+    with tier config from tier-config.yaml, generate fan chart at /workspace/validation/{strategy_id}_v{version}_fan.png,
+    log result to Mnemosyne bootstrap_validation/. Reject any strategy where gate_pass=false.
+    Update strategy_registry with validation status.'
+- name: trading-analyst-weekly-report
+  schedule: 0 15 * * 5
+  profile: analyst
+  prompt: 'Generate weekly quant report: Strategy performance attribution, factor
+    exposure, model drift detection, research pipeline status.'
+- name: trading-executor-daily-quality
+  schedule: 0 0 * * *
+  profile: executor
+  prompt: 'Daily execution quality report: Fill rates, avg slippage by venue, MEV
+    savings, rejected orders, venue uptime. Log to Mnemosyne.'
+- name: trading-executor-position-health
+  schedule: '*/30 * * * *'
+  profile: executor
+  prompt: 'Position health check: Verify all stops/TPs active, funding rates normal,
+    no venue API errors. Report anomalies to Risk-Manager.'
+- name: trading-executor-stale-sweep
+  schedule: '*/5 * * * *'
+  profile: executor
+  prompt: 'Stale order sweep: Cancel any unfilled orders past TTL. Log to execution_log.'
+- name: trading-risk-manager-daily-report
+  schedule: 0 8 * * *
+  profile: risk-manager
+  prompt: 'Daily risk report: Portfolio VaR, stress test results (BTC -20%, correlation
+    1.0), limit utilization, venue exposure, kill switch status, daily loss cap usage,
+    trailing DD usage, trade profit concentration, weekly setup count. Send to Boss.'
+- name: trading-risk-manager-state-update-starter
+  schedule: 0 7 * * *
+  profile: risk-manager
+  prompt: 'Risk state update (starter): Update daily_pnl_pct, trailing_drawdown_pct,
+    total_profit_ytd from Portfolio-Manager fills. Check Sabio limits: daily_loss_cap_pct
+    (5%), trailing_dd_cap_pct (6%), max_trade_profit_share (55%), max_weekly_setups
+    (3). Write to Mnemosyne risk_state.'
+- name: trading-risk-manager-state-update
+  schedule: '*/5 * * * *'
+  profile: risk-manager
+  prompt: 'Risk state update: Recalculate portfolio VaR, correlation matrix, drawdown,
+    open risk. Update daily_pnl_pct, trailing_drawdown_pct, total_profit_ytd. Check
+    ALL limits including daily_loss_cap_pct (5%), trailing_dd_cap_pct (6%), max_trade_profit_share
+    (55%), max_weekly_setups (3). Write to Mnemosyne risk_state. Alert on breaches.'
+- name: trading-risk-manager-weekly-review
+  schedule: 0 0 * * 1
+  profile: risk-manager
+  prompt: 'Weekly risk review: Limit effectiveness, near-misses, model risk assessment,
+    backtest vs live risk metrics. Review Sabio rules (daily 5%, trailing 6%, trade
+    profit 55%, 3 setups/week) — recommend limit adjustments. Log to boss_decisions.
+    ENFORCE BOOTSTRAP GATE: Read Mnemosyne bootstrap_validation/ for all active strategies.
+    Any strategy without valid gate_pass=true → reject all trade_ideas from that strategy
+    at pre-trade gate. Log rejections to Mnemosyne rejected_ideas/ with reason ''bootstrap_gate_failed''.'
+- name: trading-portfolio-eod-snapshot
+  schedule: 0 18 * * *
+  profile: portfolio-manager
+  prompt: 'EOD portfolio snapshot: All positions, PnL by strategy, factor exposure,
+    target vs actual weights. Write to Mnemosyne portfolio_snapshots.'
+- name: trading-portfolio-weekly-allocation
+  schedule: 0 9 * * 1
+  profile: portfolio-manager
+  prompt: 'Weekly capital allocation review: Strategy performance, capacity, correlation.
+    Adjust target_weights. Flag strategies for incubation/graduation/pruning. USE
+    BOOTSTRAP-ADJUSTED SHARPE: For each strategy with valid bootstrap_validation,
+    weight by sharpe_ci_lower (conservative) not point estimate. Strategies without
+    bootstrap gate pass → zero allocation until validated. RUN SPA REALITY CHECK (arXiv:2511.08571,
+    NASA×MIT gold futures — 0xTrackmind 2026-08-17): before re-weighting, apply Hansen''s
+    SPA / White''s reality check across live strategies (block bootstrap, 10k+ reps);
+    a strategy whose in-sample Sharpe rank does not survive multiple-testing correction
+    (p<0.05) gets ZERO allocation — the best in-sample Sharpe among N candidates is
+    expected by luck. ACCEPTANCE BAR: regress each strategy on the benchmark (spot/perp
+    index) — |beta| < 0.1 required for an alpha label; |beta| >= 0.1 is leveraged
+    beta, allocate at beta-weight with leverage capped (paper: beta≈0.03 with 2.88
+    Sharpe — the alpha IS the neutrality). CAPACITY CHECK: use the friction-adjusted
+    growth curve g(L) = mu*L - 0.5*(sigma*L)^2 - n*k*L - gamma*(n*L)^1.5 to flag strategies
+    past their impact-limited frontier for pruning. Log allocation rationale to Mnemosyne
+    portfolio_snapshots.'
+- name: trading-portfolio-monthly-report
+  schedule: 0 10 1 * *
+  profile: portfolio-manager
+  prompt: 'Monthly performance report: Full attribution, transaction costs, tax-lot
+    summary, benchmark comparison, investor narrative draft.'
+- name: trading-monitor-health-check
+  schedule: '* * * * *'
+  profile: monitor
+  prompt: 'Health check: All venue APIs, RPC nodes, MEV relays, Mnemosyne, disk/memory.
+    Write health_checks. Alert on warnings via Twilio SMS to Boss.'
+- name: trading-monitor-daily-infra
+  schedule: 0 3 * * *
+  profile: monitor
+  prompt: 'Daily infrastructure report: Uptime %, latency percentiles, error rates,
+    alert summary. Send to Boss.'
+- name: trading-monitor-market-structure
+  schedule: '*/5 * * * *'
+  profile: monitor
+  prompt: 'Market structure scan: Spreads, funding, OI, stablecoins, bridges. Alert
+    on anomalies.'
+- name: trading-monitor-position-health
+  schedule: '*/10 * * * *'
+  profile: monitor
+  prompt: 'Position health: Stops/TPs active, drift vs targets, strategy drift. Alert
+    on issues.'
+- name: trading-polymarket-daily-scan
+  schedule: 0 7 * * *
+  profile: polymarket-specialist
+  prompt: 'Daily market scan: Fetch all Polymarket markets. Filter by volume, time-to-resolution.
+    Model top 20. Write trade_ideas to Mnemosyne.'
+- name: trading-polymarket-position-monitor
+  schedule: '*/30 * * * *'
+  profile: polymarket-specialist
+  prompt: 'Position monitor: Check fills, price moves, new info. Update fair values.
+    Alert on resolution risk (hours left).'
+- name: trading-polymarket-daily-calibration
+  schedule: 0 18 * * *
+  profile: polymarket-specialist
+  prompt: 'Daily PnL & calibration: Realized vs predicted outcomes. Update Brier scores.
+    Log to model_calibration.'
+- name: trading-launch-sniper-scan
+  schedule: '* * * * *'
+  profile: launch-sniper
+  prompt: 'Launch scan: Check Pump.fun/Raydium/Moonshot for new tokens. Score. Execute
+    whitelisted. Log all to Mnemosyne.'
+- name: trading-launch-sniper-daily-review
+  schedule: 0 0 * * *
+  profile: launch-sniper
+  prompt: 'Daily sniper review: All launches today — PnL, win rate, avg hold time,
+    rug rate. Update launch_score thresholds.'
+- name: trading-yield-farmer-daily-scan
+  schedule: 0 8 * * *
+  profile: yield-farmer
+  prompt: 'Daily yield scan: All protocols — current APY, TVL, risk flags. Update
+    protocol_risk. Identify rebalance opportunities.'
+- name: trading-yield-farmer-weekly-optimize
+  schedule: 0 10 * * 1
+  profile: yield-farmer
+  prompt: 'Weekly allocation optimization: Run Sharpe optimization on yield universe.
+    Output target weights. Execute rebalances.'
+- name: trading-yield-farmer-weekly-report
+  schedule: 0 15 * * 5
+  profile: yield-farmer
+  prompt: 'Weekly yield report: Portfolio APY, attribution by protocol/chain/type,
+    risk metrics, points farming update. Send to Portfolio-Manager.'
+- name: trading-monitor-security-audit
+  schedule: 0 4 * * *
+  profile: monitor
+  prompt: 'Security audit: Verify API key scopes (no unused withdraw permissions),
+    confirm withdrawal address whitelist unchanged, scan for any unauthorized outbound
+    tx in last 24h, check Mnemosyne for unrecognized agent actions. Alert Boss + Risk-Manager
+    on ANY anomaly via Twilio End every report with an explicit status line: VERIFIED
+    (all checks actually performed) or UNABLE TO VERIFY — required tooling unavailable
+    (name the specific check that could not run). Never report an all-clear you could
+    not actually confirm..'
+- name: trading-monitor-approval-hygiene
+  schedule: 0 5 * * *
+  profile: monitor
+  prompt: 'Approval hygiene: Enumerate all ERC-20 allowances granted by fund wallets.
+    Flag any approval to protocols not in the active whitelist. Recommend revocation
+    of stale (>30d unused) approvals. Log to Mnemosyne security_log End every report
+    with an explicit status line: VERIFIED (all checks actually performed) or UNABLE
+    TO VERIFY — required tooling unavailable (name the specific check that could not
+    run). Never report an all-clear you could not actually confirm..'
+- name: trading-monitor-feed-quality
+  schedule: '*/15 * * * *'
+  profile: monitor
+  prompt: 'Feed quality: Verify all price/oracle feeds updated within tolerance (no
+    gaps > 5min). Detect stale or diverged prices vs median of 3 sources. Alert Risk-Manager
+    on bad data — stale data must NOT trigger trades End every report with an explicit
+    status line: VERIFIED (all checks actually performed) or UNABLE TO VERIFY — required
+    tooling unavailable (name the specific check that could not run). Never report
+    an all-clear you could not actually confirm..'
+- name: trading-risk-manager-kill-switch-drill
+  schedule: 0 13 * * 6
+  profile: risk-manager
+  prompt: 'Weekly kill-switch drill: Simulate a breach condition (e.g. drawdown >
+    limit) and verify the kill switch actually halts new orders across all executors/venues.
+    Report pass/fail to Boss. Never execute real trades during drill End every report
+    with an explicit status line: VERIFIED (all checks actually performed) or UNABLE
+    TO VERIFY — required tooling unavailable (name the specific check that could not
+    run). Never report an all-clear you could not actually confirm..'
+- name: trading-risk-manager-regime
+  schedule: 0 */4 * * *
+  profile: risk-manager
+  prompt: 'Regime classification: Score market as bull/bear/sideways/volatile using
+    trend, vol, correlation, and liquidity signals. Update risk_state regime tag.
+    Auto-tighten risk budget in volatile/bear; alert Boss on regime change.'
+- name: trading-risk-skill-audit
+  schedule: 0 4 1 * *
+  profile: risk-manager
+  prompt: "FlowEvo skill audit: For each agent (analyst, researcher, executor, portfolio-manager,\
+    \ monitor, yield-farmer), read skill_bank/<agent>/*. Compute:\n      - Utility\
+    \ score = success_rate * (1/token_cost) * (1/latency) * usage_freq\n      - Flag\
+    \ skills with utility < 0.3 OR negative transfer (success_rate dropped >20% last\
+    \ 30d)\n      - Archive flagged skills to skill_archive/<agent>/ with reason\n\
+    \      - Report top 5 skills by utility to Boss via Mnemosyne risk_state/skill_audit.\n\
+    \      - If any agent has <3 active skills, trigger workflow→skill compilation\
+    \ from recent successful traces."
+- name: trading-risk-hierflow-topology
+  schedule: 0 6 * * *
+  profile: risk-manager
+  prompt: 'HierFlow topology mutation: Read Mnemosyne mesh_orch_log for persistent
+    Fan-In gaps (missing nodes >2 consecutive ticks). If gaps persist in same node
+    pair > 3 days → mutate MESH-MAP.md: add redundant edge or re-route signal path.
+    Update workspace/MESH-MAP.md and push to Mnemosyne mesh_topology/active. Log mutation
+    to boss_decisions with rationale.'
+- name: trading-boss-latency-profiling
+  schedule: 0 3 * * 0
+  profile: boss
+  prompt: 'Latency prediction profiling: For each agent (analyst, researcher, executor,
+    risk-manager, portfolio-manager, monitor, polymarket-specialist, launch-sniper,
+    yield-farmer), measure actual token cost & latency of last 5 cron runs. Separate
+    prefill vs decode. Fit lightweight latency predictor: token_cost = f(context_len,
+    model, tool_calls). Update Mnemosyne cost_model/agent_latency with: avg_input_tokens,
+    avg_output_tokens, p50_latency_s, p95_latency_s, cost_usd_per_run. Use to validate
+    model tiering — frontier models only on IQ-critical agents, cheapest capable on
+    surveillance loops. Boss reviews weekly.'
+- name: trading-portfolio-reconciliation
+  schedule: 0 1 * * *
+  profile: portfolio-manager
+  prompt: 'Reconcile internal position book against exchange balances + on-chain holdings.
+    Flag any discrepancy > 0.1% of NAV. Investigate stuck/failed withdrawals. Log
+    deltas to Mnemosyne reconciliation_log End every report with an explicit status
+    line: VERIFIED (all checks actually performed) or UNABLE TO VERIFY — required
+    tooling unavailable (name the specific check that could not run). Never report
+    an all-clear you could not actually confirm..'
+- name: trading-portfolio-treasury-sweep
+  schedule: 0 11 * * 1
+  profile: portfolio-manager
+  prompt: 'Treasury review: Identify idle stablecoin/ETH balances not deployed to
+    active strategies. Compare hold-yield options (e.g. Aave/secure venues) vs dry-powder
+    need. Recommend placement or buffer size to Boss.'
+- name: trading-portfolio-benchmark
+  schedule: 0 19 * * *
+  profile: portfolio-manager
+  prompt: 'Benchmark: Compute live Sharpe/Sortino/Calmar vs BTC & ETH buy-and-hold
+    since inception. Flag if 30d alpha negative. Write to Mnemosyne portfolio_snapshots.'
+- name: trading-portfolio-compliance
+  schedule: 0 9 1 * *
+  profile: portfolio-manager
+  prompt: 'Compliance: Maintain per-jurisdiction tax-lot summary, wash-sale flags,
+    and audit trail of all agent decisions. Cross-check against regulatory calendar.
+    Draft compliance memo for LPs.'
+- name: trading-executor-gas-watch
+  schedule: '*/10 * * * *'
+  profile: executor
+  prompt: 'Gas watch: Track EVM base fee + priority fee percentiles. Flag low-gas
+    windows (bottom 20%) suitable for non-urgent rebalances. Suppress during high-volatility
+    spikes where slippage dominates End every report with an explicit status line:
+    VERIFIED (all checks actually performed) or UNABLE TO VERIFY — required tooling
+    unavailable (name the specific check that could not run). Never report an all-clear
+    you could not actually confirm..'
+- name: trading-boss-weekly-learning
+  schedule: 0 20 * * 0
+  profile: boss
+  prompt: 'Weekly learning consolidation: Pull all agent learnings/incidents from
+    Mnemosyne (veracity=stated). Distill into updated playbooks, strategy notes, and
+    shared best-practices. Push to shared memory surface so every agent benefits next
+    week.'
+- name: trading-boss-incident-retro
+  schedule: 0 14 1 * *
+  profile: boss
+  prompt: 'Incident retro: Review all flagged breaches/near-misses/anomalies from
+    last month. Root-cause each, update handoff/escalation playbooks, and confirm
+    Risk-Manager limits still appropriate. Log to boss_decisions.'
+- name: trading-boss-fanin-sweep
+  schedule: 0 7,19 * * *
+  profile: boss
+  prompt: 'Fan-in sweep: (1) Read ALL workspace/INBOX-*.md and workspace/FEEDBACK-*.md
+    files (any agent) plus mnemosyne_shared_recall(limit=30, query=''SIGNAL OR BLOCKER
+    OR LOOPBACK''). (2) For each unread line: classify as signal/handoff/loopback.
+    (3) Acknowledge the sender, dispatch to the correct owner per MESH-MAP edges (E1-E10b),
+    or escalate to yourself. (4) Write a short Team Pulse to Mnemosyne shared (author=boss,
+    type=fanin_pulse). Only alert owner via SMS for P1 items (kill-switch, DD>10%,
+    daily-loss-cap, trailing-DD-breach). (5) COORDINATION-MONITOR (E11, arXiv:2510.25929):
+    scan workspace/INBOX-boss.md for unread [COORD-SNAPSHOT] lines (emitted per tick
+    by the orchestrator). Score each: if |imbalance| >= 0.6 (>=60% one-directional
+    net order flow this tick) OR the same top_emitter recurs in >= 3 consecutive snapshots
+    (one agent/cluster dominating decisions), this is a collusion/over-concentration
+    breach. On breach: (a) write a #5 Loopback to FEEDBACK-<top_emitter>.md (''COORD-BREACH:
+    <imbalance|emitter> -> loopback to <agent> — diversify / justify concentration'')
+    and (b) raise an E3 visibility alert to yourself (INBOX-boss.md line ''[SIGNAL]
+    boss: coord-breach <detail> -> boss''). Thresholds are Sabio Hard Rule style:
+    tighten always, loosen only with your own sign-off. Note: snapshots are currently
+    ns=advisory; only ACT on breaches, never modify live orders.'
+- name: trading-boss-fanout-weekly
+  schedule: 0 8 * * 1
+  profile: boss
+  prompt: 'Fan-out: Write a WEEKLY PRIORITIES brief to workspace/FEEDBACK-<agent>.md
+    for EVERY agent in the team (researcher, analyst, executor, risk-manager, portfolio-manager,
+    monitor, polymarket-specialist, launch-sniper, yield-farmer): top 3 priorities,
+    blockers to watch, cross-agent handoff reminders per MESH-MAP. Also write one
+    shared copy to Mnemosyne (author=boss, type=weekly_fanout). Keep it under 200
+    words.'
+- name: trading-analyst-idea-push
+  schedule: 0 11 * * *
+  profile: analyst
+  prompt: 'Trade-idea push: Read Mnemosyne trade_ideas/ for ideas flagged READY_FOR_EXECUTION
+    by risk-manager. For each, write [SIGNAL] analyst: trade_idea <id> -> executor
+    to workspace/INBOX-executor.md (per E_SYNTHESIS1/E1 flow) with side, size, venue,
+    trigger price. Follow up on any idea older than 48h without executor ack — escalate
+    to Boss if 2+ are pending.'
+- name: trading-risk-flags-boss
+  schedule: 0 8,20 * * *
+  profile: risk-manager
+  prompt: 'Risk-flag fan-in: Read Mnemosyne risk_state + today''s pre-trade gates.
+    For any breach or near-miss (kill-switch armed, daily loss cap used >50%, trailing
+    DD >50% of cap, rejected orders, bootstrap gate failures), write [SIGNAL] risk-manager:
+    <flag> -> boss to workspace/INBOX-boss.md with the exact number. If nothing to
+    flag, stay silent.'
+- name: trading-monitor-liveness-boss
+  schedule: 0 6,18 * * *
+  profile: monitor
+  prompt: 'Liveness pulse: Verify every agent with a cron reported a [STATUS] within
+    its window (sub-daily 6h, daily 26h). Write [SIGNAL] monitor: liveness <ok|STALE
+    <agent>> -> boss to workspace/INBOX-boss.md plus any infra anomaly (E3). If all
+    healthy, write one [STATUS] line only. Never report an all-clear you could not
+    actually confirm.'
+- name: trading-researcher-alpha-analyst
+  schedule: 0 7 * * *
+  profile: researcher
+  prompt: 'Alpha push: Read today''s macro_signals + fast-climbing wallet scan output.
+    Write top-3 actionable alpha items to workspace/INBOX-analyst.md (per researcher
+    -> analyst handoff) with confidence and time-decay. If no new signal, stay silent.'
+- name: trading-portfolio-pnl-boss
+  schedule: 0 19 * * *
+  profile: portfolio-manager
+  prompt: 'PnL fan-in: Read portfolio_snapshots + reconciliation_log. Write [SIGNAL]
+    portfolio-manager: nav <NAV> pnl_24h <X%> -> boss to workspace/INBOX-boss.md with
+    position count and any >0.1% NAV reconciliation discrepancy. If nothing notable,
+    one [STATUS] line only.'
+- name: trading-executor-fill-feedback
+  schedule: '*/30 * * * *'
+  profile: executor
+  prompt: 'Fill-feedback push (E10a): Review fills since last run. For any reject,
+    partial fill, or slippage > bps threshold, write [SIGNAL] executor: <detail> ->
+    risk-manager to workspace/INBOX-risk-manager.md (throttled: ONLY on reject/partial/slippage
+    — never routine fills). Stay silent otherwise.'
+- name: trading-mesh-orchestrator
+  schedule: '*/30 * * * *'
+  profile: boss
+  prompt: $_mesh_orch_prompt

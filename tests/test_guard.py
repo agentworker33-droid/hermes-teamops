@@ -174,6 +174,25 @@ def test_rollback_removes_profiles_and_snapshot(tmp_path, sales_bp):
     assert not (home / "teams" / "sales" / ".teamops-sales.snapshot.json").exists()
 
 
+def test_rollback_removes_empty_shared_dir(tmp_path, sales_bp):
+    """Rollback must remove the team shared dir once the snapshot is gone —
+    the snapshot is INSIDE the dir, so it must be unlinked before the empty-dir
+    check, or a leftover empty teams/<team>/ dir survives every rollback."""
+    home = tmp_path
+    guard = DeployGuard(sales_bp, home=home)
+    guard.runner = FakeRunner()
+    guard.deploy()
+    shared = home / "teams" / "sales"
+    assert shared.is_dir()
+    rb = DeployGuard(sales_bp, home=home)
+    rb.runner = FakeRunner()
+    results = rb.rollback()
+    by_name = {r.name: r.status for r in results}
+    assert by_name["rollback-dir"] == "PASS", [r.__dict__ for r in results]
+    assert not shared.exists(), "empty team shared dir should be removed after rollback"
+    assert all(r.status != "FAIL" for r in results)
+
+
 def test_rollback_removes_crons_by_id(tmp_path, sales_bp):
     home = tmp_path
     guard = DeployGuard(sales_bp, home=home)

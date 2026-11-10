@@ -339,6 +339,11 @@ class DeployGuard:
                     self._add(f"rollback-file:{p.name}", "PASS", "removed")
                 except OSError as e:  # noqa: BLE001
                     self._add(f"rollback-file:{p.name}", "FAIL", str(e))
+        try:
+            snap_path.unlink()
+            self._add("rollback-snapshot", "PASS", "snapshot removed")
+        except OSError as e:  # noqa: BLE001
+            self._add("rollback-snapshot", "WARN", str(e))
         shared_dir = self.team_shared_dir()
         if shared_dir.exists() and not any(shared_dir.iterdir()):
             try:
@@ -346,11 +351,6 @@ class DeployGuard:
                 self._add("rollback-dir", "PASS", "team shared dir removed")
             except OSError as e:  # noqa: BLE001
                 self._add("rollback-dir", "WARN", str(e))
-        try:
-            snap_path.unlink()
-            self._add("rollback-snapshot", "PASS", "snapshot removed")
-        except OSError as e:  # noqa: BLE001
-            self._add("rollback-snapshot", "WARN", str(e))
         return self.checks
 
     # -- reporting --------------------------------------------------------------

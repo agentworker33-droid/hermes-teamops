@@ -1,0 +1,181 @@
+{
+  "version": "0.1",
+  "edges": [
+    {
+      "from": "listing-agent",
+      "to": "buyer-agent",
+      "via": "#2 Signal",
+      "artifact": "INBOX-buyer-agent.md (listings/hot)"
+    },
+    {
+      "from": "listing-agent",
+      "to": "buyer-agent",
+      "via": "#2 Signal",
+      "artifact": "INBOX-buyer-agent.md (listings/broad)"
+    },
+    {
+      "from": "listing-agent",
+      "to": "buyer-agent",
+      "via": "#1 Handoff",
+      "artifact": "INBOX-buyer-agent.md (listings/concierge)"
+    },
+    {
+      "from": "listing-agent",
+      "to": "inside-sales",
+      "via": "#2 Signal",
+      "artifact": "INBOX-inside-sales.md (listings/price_war)"
+    },
+    {
+      "from": "listing-agent",
+      "to": "inside-sales",
+      "via": "#2 Signal",
+      "artifact": "INBOX-inside-sales.md (listings/price_move)"
+    },
+    {
+      "from": "transaction-coordinator",
+      "to": "client-care",
+      "via": "#2 Signal",
+      "artifact": "INBOX-client-care.md (transactions/at_risk)"
+    },
+    {
+      "from": "transaction-coordinator",
+      "to": "client-care",
+      "via": "#2 Signal",
+      "artifact": "INBOX-client-care.md (transactions/stream)"
+    },
+    {
+      "from": "transaction-coordinator",
+      "to": "client-care",
+      "via": "#1 Handoff",
+      "artifact": "client_care/premium_close"
+    },
+    {
+      "from": "transaction-coordinator",
+      "to": "ops-manager",
+      "via": "#2 Signal",
+      "artifact": "INBOX-ops-manager.md (legal/specialist)"
+    },
+    {
+      "from": "inside-sales",
+      "to": "listing-agent",
+      "via": "#3 Request",
+      "artifact": "[REQUEST] listing-agent: CASH_VERIFY <lead_id>"
+    },
+    {
+      "from": "transaction-coordinator",
+      "to": "ops-manager",
+      "via": "#2 Signal",
+      "artifact": "INBOX-ops-manager.md (title/clear)"
+    },
+    {
+      "from": "commercial-agent",
+      "to": "listing-agent",
+      "via": "#2 Signal",
+      "artifact": "INBOX-listing-agent.md (investor/portfolio)"
+    },
+    {
+      "from": "marketing-agent",
+      "to": "listing-agent",
+      "via": "#5 Loopback",
+      "artifact": "FEEDBACK-listing-agent.md (marketing/views)"
+    },
+    {
+      "from": "marketing-agent",
+      "to": "listing-agent",
+      "via": "#5 Loopback",
+      "artifact": "FEEDBACK-listing-agent.md (marketing/heavy)"
+    },
+    {
+      "from": "marketing-agent",
+      "to": "listing-agent",
+      "via": "#5 Loopback",
+      "artifact": "FEEDBACK-listing-agent.md (marketing/private)"
+    },
+    {
+      "from": "client-care",
+      "to": "inside-sales",
+      "via": "#5 Loopback",
+      "artifact": "FEEDBACK-inside-sales.md (client_care/referral_roi)"
+    },
+    {
+      "from": "client-care",
+      "to": "inside-sales",
+      "via": "#5 Loopback",
+      "artifact": "FEEDBACK-inside-sales.md (client_care/premium_ref)"
+    },
+    {
+      "from": "buyer-agent",
+      "to": "marketing-agent",
+      "via": "#5 Loopback",
+      "artifact": "FEEDBACK-marketing-agent.md (buyer_pipeline/demand)"
+    },
+    {
+      "from": "buyer-agent",
+      "to": "marketing-agent",
+      "via": "#2 Signal",
+      "artifact": "INBOX-marketing-agent.md (buyer_pipeline/urgent)"
+    },
+    {
+      "from": "buyer-agent",
+      "to": "marketing-agent",
+      "via": "#5 Loopback",
+      "artifact": "FEEDBACK-marketing-agent.md (buyer_pipeline/broad)"
+    },
+    {
+      "from": "buyer-agent",
+      "to": "marketing-agent",
+      "via": "#1 Handoff",
+      "artifact": "leads/curated_match"
+    },
+    {
+      "from": "inside-sales",
+      "to": "listing-agent",
+      "via": "#3 Request",
+      "artifact": "[REQUEST] listing-agent: CMA <addr/zip>"
+    },
+    {
+      "from": "commercial-agent",
+      "to": "listing-agent",
+      "via": "#2 Signal",
+      "artifact": "INBOX-listing-agent.md (commercial/portfolio)"
+    },
+    {
+      "from": "commercial-agent",
+      "to": "buyer-agent",
+      "via": "#2 Signal",
+      "artifact": "INBOX-buyer-agent.md (commercial/investor)"
+    },
+    {
+      "from": "recruiting-coordinator",
+      "to": "ops-manager",
+      "via": "#2 Signal",
+      "artifact": "INBOX-ops-manager.md (recruiting/at_risk)"
+    },
+    {
+      "from": "recruiting-coordinator",
+      "to": "boss",
+      "via": "#1 Handoff",
+      "artifact": "recruiting/hire_plan"
+    },
+    {
+      "from": "listing-agent",
+      "to": "transaction-coordinator",
+      "via": "#1 Handoff",
+      "artifact": "handoffs/negotiation/<listing_id>"
+    }
+  ],
+  "shared_files": [
+    "FEEDBACK-inside-sales.md",
+    "FEEDBACK-listing-agent.md",
+    "FEEDBACK-marketing-agent.md",
+    "INBOX-buyer-agent.md",
+    "INBOX-client-care.md",
+    "INBOX-inside-sales.md",
+    "INBOX-listing-agent.md",
+    "INBOX-marketing-agent.md",
+    "INBOX-ops-manager.md",
+    "[REQUEST] listing-agent: CASH_VERIFY <lead_id>",
+    "[REQUEST] listing-agent: CMA <addr",
+    "client_care"
+  ]
+}

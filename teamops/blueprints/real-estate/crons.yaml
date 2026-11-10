@@ -1,0 +1,489 @@
+crons:
+- name: real-estate-boss-am
+  schedule: 0 7 * * *
+  profile: boss
+  prompt: 'Morning pipeline briefing for real-estate_DISPLAY: (1) Read all agent statuses
+    via mnemosyne_shared_recall(limit=20,query=''status_update OR BLOCKER''). (2)
+    Read the team Mesh Map bus: scan workspace/INBOX-*.md and workspace/FEEDBACK-*.md
+    for unread signals/loopbacks since yesterday — surface any price-war, hot-inventory,
+    at-risk-deal, or referral-ROI items in the Team Pulse. (3) Active listings, pending
+    deals, closings this week, new leads, showing schedule. Include Team Pulse. Send
+    to owner via Twilio SMS.'
+- name: real-estate-boss-md
+  schedule: 0 12 * * *
+  profile: boss
+  prompt: 'Mid-day check: Showing feedback, new offers, appraisal/inspection updates,
+    any deal escalations.'
+- name: real-estate-boss-pm
+  schedule: 0 17 * * *
+  profile: boss
+  prompt: 'End-of-day summary: Deals progressed, new leads qualified, tomorrow''s
+    showing schedule, any at-risk transactions. Team Pulse via SMS.'
+- name: real-estate-boss-wk
+  schedule: 0 9 * * 1
+  profile: boss
+  prompt: 'Weekly brokerage review: Pipeline health, agent performance, marketing
+    ROI, closings vs target, Monday action plan.'
+- name: real-estate-list-am
+  schedule: 0 8 * * *
+  profile: listing-agent
+  prompt: 'Morning listing review: Active listings status, showing feedback from yesterday,
+    online views trend, any new comparables. Update sellers.'
+- name: real-estate-list-md
+  schedule: 0 13 * * *
+  profile: listing-agent
+  prompt: 'Mid-day market check: New listings in market area, price reductions, pending
+    sales. Flag competitive threats to sellers.'
+- name: real-estate-list-wk
+  schedule: 0 17 * * 5
+  profile: listing-agent
+  prompt: 'Weekly listing report: DOM by listing, showing-to-offer ratio, price reduction
+    candidates, upcoming expirations.'
+- name: real-estate-buy-am
+  schedule: 0 8 * * *
+  profile: buyer-agent
+  prompt: 'Morning buyer search: New listings matching active buyer criteria. Send
+    top-3 matches to each active buyer with analysis.'
+- name: real-estate-buy-prep
+  schedule: 0 14 * * *
+  profile: buyer-agent
+  prompt: 'Showing prep: Review upcoming showings for tomorrow, prepare comps and
+    property analysis for each showing.'
+- name: real-estate-buy-wk
+  schedule: 0 17 * * 5
+  profile: buyer-agent
+  prompt: 'Weekly buyer pipeline: Status of all active buyers, offers outstanding,
+    closings this month, follow-ups needed.'
+- name: real-estate-is-am
+  schedule: 0 9 * * *
+  profile: inside-sales
+  prompt: 'Morning lead review: New overnight leads, follow-up appointments today,
+    yesterday''s no-shows to re-engage.'
+- name: real-estate-is-hot
+  schedule: '*/15 8-20 * * *'
+  profile: inside-sales
+  prompt: 'Hot lead sweep: Any new leads > 15 min with no contact? Priority outbound.
+    Alert Boss if P1.'
+- name: real-estate-is-fu
+  schedule: 0 13 * * *
+  profile: inside-sales
+  prompt: 'Mid-day follow-up batch: Day 1, 3, 7, 14 leads — call/text/email per cadence.
+    Log outcomes.'
+- name: real-estate-is-sc
+  schedule: 0 17 * * *
+  profile: inside-sales
+  prompt: 'Inside sales scorecard: Leads contacted, appointments set, show rate, conversion
+    to active client. Write status to Mnemosyne.'
+- name: real-estate-tc-dl
+  schedule: 0 8 * * *
+  profile: transaction-coordinator
+  prompt: 'Morning deadline scan: Any deadlines today, tomorrow, or overdue across
+    all active transactions. Alert respective agents.'
+- name: real-estate-tc-eod
+  schedule: 0 16 * * *
+  profile: transaction-coordinator
+  prompt: 'End-of-day transaction update: Deadlines met today, upcoming 48h deadlines,
+    any at-risk deals.'
+- name: real-estate-tc-wk
+  schedule: 0 9 * * 1
+  profile: transaction-coordinator
+  prompt: 'Weekly transaction report: New contracts this week, closings this week,
+    fall-throughs, commission collected.'
+- name: real-estate-mkt-am
+  schedule: 0 8 * * *
+  profile: marketing-agent
+  prompt: 'Morning marketing check: Ad performance overnight, new leads received,
+    social mentions, any negative reviews to address.'
+- name: real-estate-mkt-mid
+  schedule: 0 12 * * 3
+  profile: marketing-agent
+  prompt: 'Mid-week content review: This week''s social posts, upcoming content calendar,
+    listing marketing needs.'
+- name: real-estate-mkt-wk
+  schedule: 0 16 * * 5
+  profile: marketing-agent
+  prompt: 'Weekly marketing report: Lead generation by source, ad spend vs leads,
+    top-performing content, recommendations.'
+- name: real-estate-ops-guardrail-check
+  schedule: 0 5 * * *
+  profile: ops-manager
+  prompt: 'Daily guardrail check: Read ops_state from Mnemosyne. Check: (1) Listing
+    age > 21 days without price reduction? alert Listing-Agent. (2) Buyer showings
+    > 10 without offer? alert Inside-Sales to re-qualify. (3) TC file age > 3 days
+    without milestone? alert Transaction-Coordinator. (4) Lead response > 15 min?
+    alert Inside-Sales. (5) Commission advance concentration > 40%? alert Boss. Write
+    results to ops_state. Log breaches to ops_decisions. Alert Broker via Twilio if
+    any breach.'
+- name: real-estate-mi-regime
+  schedule: 0 6 * * 1
+  profile: market-intelligence
+  prompt: 'Weekly regime detection: Pull MLS inventory, DOM, sale-to-list ratios,
+    price velocity for farm areas. Compute: inventory_months, avg_dom, sale_to_list_pct.
+    Classify regime per market area: hot_seller (inv<3mo & dom<21 & stl>98%), balanced
+    (inv 3-6 & dom 21-60 & stl 95-98%), buyer_market (inv>6 OR dom>60 OR stl<95%),
+    luxury (price>p95 & dom>90 & specialized_marketing), distressed (foreclosure/short_sale/probate
+    OR condition_below_fha OR title_issues). Write to Mnemosyne market_state/regime
+    with metadata author=market-intelligence. Alert Ops Manager on regime change.'
+- name: real-estate-ops-feed-health
+  schedule: '*/5 7-22 * * *'
+  profile: ops-manager
+  prompt: $(generate_listing_feed_health_cron)
+- name: real-estate-is-sla-enforce
+  schedule: '*/5 8-21 * * *'
+  profile: inside-sales
+  prompt: $(generate_inside_sales_sla_cron)
+- name: real-estate-ops-compliance
+  schedule: 0 6 * * *
+  profile: ops-manager
+  prompt: $(generate_compliance_guardrail_cron)
+- name: real-estate-cc-nps
+  schedule: 0 10 * * *
+  profile: client-care
+  prompt: $(generate_client_care_nps_cron)
+- name: real-estate-mkt-roi
+  schedule: 0 11 * * 1-5
+  profile: marketing-agent
+  prompt: $(generate_marketing_roi_cron)
+- name: real-estate-showing-coord
+  schedule: '*/5 8-20 * * *'
+  profile: inside-sales
+  prompt: $(generate_showing_coordination_cron)
+- name: real-estate-boss-inbox-sweep
+  schedule: 0 7,19 * * *
+  profile: boss
+  prompt: 'Fan-in sweep: (1) Read ALL workspace/INBOX-*.md and workspace/FEEDBACK-*.md
+    files (any agent) plus mnemosyne_shared_recall(limit=30, query=''SIGNAL OR BLOCKER
+    OR LOOPBACK''). (2) For each unread line: classify as signal/handoff/loopback.
+    (3) Acknowledge the sender, dispatch to the correct owner per MESH-MAP edges,
+    or escalate to yourself. (4) Write a short Team Pulse to Mnemosyne shared (author=boss,
+    type=fanin_pulse). Only alert owner via SMS for P1 items.'
+- name: real-estate-boss-fanout-weekly
+  schedule: 0 8 * * 1
+  profile: boss
+  prompt: 'Fan-out: Write a WEEKLY PRIORITIES brief to workspace/FEEDBACK-<agent>.md
+    for EVERY agent in the team (listing-agent, buyer-agent, inside-sales, transaction-coordinator,
+    document-processor, market-intelligence): top 3 priorities, blockers to watch,
+    cross-agent handoff reminders per MESH-MAP. Also write one shared copy to Mnemosyne
+    (author=boss, type=weekly_fanout). Keep it under 200 words.'
+- name: real-estate-is-handoff-cma
+  schedule: 0 10 * * *
+  profile: inside-sales
+  prompt: 'CMA request handoff: Review recent buyer inquiries that lack a pricing
+    analysis. For each, write a [REQUEST] listing-agent: CMA <addr/zip> line to workspace/INBOX-listing-agent.md
+    with the buyer''s criteria. Follow up on any CMA request older than 48h without
+    response — escalate to Boss if 2+ are pending.'
+- name: real-estate-list-handoff-pricewar
+  schedule: '*/30 8-19 * * *'
+  profile: listing-agent
+  prompt: 'Price-war signal fan-out: Check new listings and price reductions in the
+    last 30 min. If any new listing priced >5% below comps OR a price drop >3% in
+    the farm area, write [SIGNAL] listing-agent: price_war -> inside-sales to workspace/INBOX-inside-sales.md
+    (per E_INSIDE_URGENT). Also flag top 3 hot listings to buyer-agent per E_LISTING_FAST.
+    If none, stay silent.'
+- name: real-estate-buy-inbox-match
+  schedule: 0 8,15 * * *
+  profile: buyer-agent
+  prompt: 'Inbox match: Read workspace/INBOX-buyer-agent.md and mnemosyne_shared_recall(query=''listings/new'')
+    for new/reduced listings since last run. Cross-reference saved buyer criteria,
+    draft top-3 personalized alerts (not sent without review), and write matching
+    status to Mnemosyne buyer_pipeline/matches. Clear processed inbox lines.'
+- name: real-estate-tc-inbox-risk
+  schedule: 0 9,17 * * *
+  profile: transaction-coordinator
+  prompt: 'At-risk inbox: Read workspace/INBOX-transaction-coordinator.md + Mnemosyne
+    transactions/at_risk. For each flagged transaction: verify deadline status, update
+    the risk log, and if any contingency is within 72h write [SIGNAL] transaction-coordinator:
+    contingency_risk -> boss to INBOX-boss.md. Clear processed lines.'
+- name: real-estate-mi-regime-fanout
+  schedule: 0 7 * * 1
+  profile: market-intelligence
+  prompt: 'Regime fan-out: After detecting market regime, write a short REGIME BRIEF
+    to workspace/FEEDBACK-<agent>.md for each of: listing-agent (pricing strategy),
+    buyer-agent (match aggressiveness), inside-sales (lead qualification), transaction-coordinator
+    (contingency watch), document-processor (disclosure priority), boss (one-line
+    summary). Reference the MESH-MAP regime table to say which edges are active.'
+- name: real-estate-dp-contract-scan
+  schedule: 0 11 * * *
+  profile: document-processor
+  prompt: 'Contract deadline fan-in: Scan recently added contract/disclosure documents
+    (Mnemosyne docs/contracts, workspace uploads). Extract: inspection/appraisal/loan/closing
+    dates, contingencies, unusual terms. Write structured risk flags to workspace/INBOX-transaction-coordinator.md
+    (per E_TC_STANDARD) and log to Mnemosyne docs/deadline_risks. If no new docs,
+    stay silent.'
+- name: real-estate-ops-crm
+  schedule: 0 8 * * 1
+  profile: ops-manager
+  prompt: 'Weekly CRM audit: Stale records, missing follow-ups, tag accuracy. Flag
+    to Boss.'
+- name: real-estate-ops-comp
+  schedule: 0 9 1 * *
+  profile: ops-manager
+  prompt: 'Monthly compliance check: License renewals due this month, CE deadlines,
+    document retention audit.'
+- name: real-estate-ops-comm
+  schedule: 0 9 15 * *
+  profile: ops-manager
+  prompt: 'Mid-month commission tracking: Closings this month, commissions received
+    vs expected, any discrepancies.'
+- name: real-estate-cc-daily
+  schedule: 0 9 * * *
+  profile: client-care
+  prompt: 'Daily client care queue: Who is due for touchpoint today? (Review request,
+    anniversary, birthday, check-in.) Execute touchpoints.'
+- name: real-estate-cc-rev
+  schedule: 0 10 * * 1
+  profile: client-care
+  prompt: 'Weekly review sweep: Which closed clients haven''t left reviews? Second
+    request batch. Monitor new reviews and respond.'
+- name: real-estate-cc-mon
+  schedule: 0 9 1 * *
+  profile: client-care
+  prompt: 'Monthly client care report: Reviews this month, referrals generated, NPS
+    estimate, upcoming touchpoints.'
+- name: real-estate-list-mls-pull
+  schedule: 30 5 * * *
+  profile: listing-agent
+  prompt: 'Early MLS pull: New listings overnight (5:30 AM is when most MLS updates
+    hit). Flag hot new inventory to Buyer Agent for client matching.'
+- name: real-estate-boss-weekend
+  schedule: 0 9 * * 0
+  profile: boss
+  prompt: 'Weekend open house check: Any open houses scheduled? Showing feedback from
+    last 48h? New listings needing immediate pricing analysis? Alert broker.'
+- name: real-estate-list-vision
+  schedule: '*/30 8-19 * * *'
+  profile: listing-agent
+  prompt: 'Listing photo vision intake (FEATURE 1): For each ACTIVE listing without
+    a vision pass in 24h, run _pull_listing_photos(<listing_id>) and attach the returned
+    image_url list to THIS prompt (multimodal). Then: (1) verify MLS compliance —
+    flag any photo missing required disclosures / staging / quality issues and enforce
+    ''Max listing photos missing MLS compliance: 0'' by writing [SIGNAL] listing-agent:
+    mls_photo_compliance -> marketing-agent; (2) describe standout features/flaws
+    in 3 lines per listing for the seller update; (3) note any visual mismatch between
+    photos and written description. If LISTING_FEED unset, write [BLOCKER] to Mnemosyne
+    shared (author=listing-agent, type=vision_blocker) and exit.'
+- name: real-estate-buy-showing-photo
+  schedule: '*/20 8-20 * * *'
+  profile: buyer-agent
+  prompt: 'Inbound showing-photo read (FEATURE 3): Scan $MEDIA_DIR/showings/ for NEW
+    image files (mtime < 20m, unprocessed). For each: attach the image to THIS prompt
+    (multimodal) and analyze as buyer-sent showing feedback — identify red flags (water
+    stains, cracks, deferred maintenance, layout issues), score severity 1-5, draft
+    a follow-up note to the buyer + flag TC if it affects inspection contingency.
+    Log processed filenames to $MEDIA_DIR/showings/.processed. If none, stay silent.
+    HOOK: gateway must drop inbound MMS/email attachments into $MEDIA_DIR/showings/
+    (Twilio inbound media / Gmail attachment watch).'
+- name: real-estate-dp-inspection-vision
+  schedule: 0 11 * * *
+  profile: document-processor
+  prompt: 'Inspection-photo condition read (FEATURE 5): Scan $MEDIA_DIR/inspections/
+    for new inspection photos. Attach each image (multimodal) and extract: defect
+    type, location, severity (cosmetic/minor/major/structural), one-line summary.
+    Write structured condition summary to the deal file and signal [SIGNAL] document-processor:
+    inspection_findings -> transaction-coordinator (attach to TC risk if major/structural).
+    This handles PHOTO evidence, separate from the contract-text OCR path (doc_classifier
+    scanned branch). Log processed files to $MEDIA_DIR/inspections/.processed.'
+- name: real-estate-mkt-video-tour
+  schedule: 0 15 * * 2,5
+  profile: marketing-agent
+  prompt: 'Property video / virtual tour generation (FEATURE 2): For top-3 active
+    listings by engagement, run _pull_listing_photos(<listing_id>) then invoke \$VIDEO_GEN_TOOL
+    with the photo set + listing copy to render a 30-60s virtual tour (music bed,
+    captioned highlights, branded intro/outro). Upload to the listing''s marketing
+    bucket; write URL to Mnemosyne shared (author=marketing-agent, type=listing_video).'
+- name: real-estate-mkt-social-creative
+  schedule: 0 12 * * 1-5
+  profile: marketing-agent
+  prompt: 'Social video / ad creative generation (FEATURE 4): For new or price-reduced
+    listings, run _pull_listing_photos(<listing_id>) then invoke \$VIDEO_GEN_TOOL
+    to produce 3 platform-native ad creatives (IG Reel 9:16, FB 1:1, YT Short 16:9)
+    from the photo set + listing-agent copy. Route each to the #7 Generate-and-Filter
+    edge (marketing-agent generator -> marketing-agent filter) for selection before
+    the #8 Verifier gate. Write asset URLs to Mnemosyne shared (author=marketing-agent,
+    type=social_creative).'
+- name: real-estate-list-velocity
+  schedule: '*/15 7-22 * * *'
+  profile: listing-agent
+  prompt: 'Listing velocity sweep: Poll \$LISTING_FEED for NEW listings and PRICE
+    REDUCTIONS since last run. For each: classify hotness (price vs comps, days-on-market,
+    seller motivation signals), write structured signal to Mnemosyne listings/new.
+    Flag top 3 to Buyer Agent for instant client matching. If \$LISTING_FEED empty,
+    web_search public portals and warn [BLOCKER] feed not configured.'
+- name: real-estate-buy-match
+  schedule: '*/30 * * * *'
+  profile: buyer-agent
+  prompt: 'Buyer match pulse: Cross-reference saved-buyer search criteria against
+    listings/new from the last 30 min. For any strong match, draft a personalized
+    alert to the buyer (not sent without review) and notify Inside Sales. Speed =
+    edge: buyers who see a home first make the offer first.'
+- name: real-estate-is-hot-tight
+  schedule: '*/10 8-21 * * *'
+  profile: inside-sales
+  prompt: 'Hot-lead response SLA: Check for uncontacted inbound leads (site forms,
+    portals, referrals) from the last 10 min. Response within 10 min = ~100x connect
+    rate vs next-day. Auto-draft first-touch, escalate stale >10 min to Boss. Log
+    to Mnemosyne sales/lead_latency.'
+- name: real-estate-tc-deadline
+  schedule: 0 */4 * * *
+  profile: transaction-coordinator
+  prompt: 'Contingency deadline watchdog: Scan all active contracts for inspection,
+    appraisal, loan, and closing dates within 7 days. Flag any at risk of blowing
+    a contingency. Cross-check doc status vs checklist. Alert Boss + Client Care on
+    at-risk deals.'
+- name: real-estate-cc-reviews
+  schedule: 0 9,14,20 * * *
+  profile: client-care
+  prompt: 'Reputation sweep: Check Google My Business + Zillow profile for NEW reviews/ratings.
+    For any <=3 star: draft owner-notification + response draft within SLA. Track
+    NPS trend in Mnemosyne client_care/reviews. Catch bad reviews before they spread.'
+- name: real-estate-mkt-pulse
+  schedule: '*/30 9-18 * * 1-5'
+  profile: marketing-agent
+  prompt: 'Marketing pulse: Pull ad-platform + lead-source performance since last
+    run. Flag campaigns with CPL spike or lead drop. Reallocate budget suggestions
+    to Boss. Write to Mnemosyne marketing/perf.'
+- name: real-estate-list-offmarket
+  schedule: 0 8 * * *
+  profile: listing-agent
+  prompt: 'Off-market scan: Check permitted sources (Facebook Marketplace, Craigslist,
+    investor groups) for pocket listings / FSBO that aren''t on MLS yet. Source inventory
+    competitors miss. Log candidates to Mnemosyne listings/offmarket. Respect each
+    platform''s ToS.'
+- name: real-estate-list-cma
+  schedule: 0 11 * * *
+  profile: listing-agent
+  prompt: 'CMA refresh: Pull recent solds + active comps for today''s new listings.
+    Auto-update suggested pricing. Flag any listing priced >5% off comps to Boss (overpriced
+    = sits; underpriced = leaves money). Write to Mnemosyne listings/cma.'
+- name: real-estate-comm-am
+  schedule: 0 8 * * *
+  profile: commercial-agent
+  prompt: 'Morning commercial review: New portfolios, investor inbound, LOI status,
+    cap-rate moves.'
+- name: real-estate-comm-wk
+  schedule: 0 10 * * 1
+  profile: commercial-agent
+  prompt: 'Weekly commercial ops: Pipeline health, NOI modeling queue, referral pipeline,
+    renewal flags.'
+- name: real-estate-comm-mo
+  schedule: 0 14 1 * *
+  profile: commercial-agent
+  prompt: 'Monthly commercial review: Deal velocity, margin by asset class, expansion
+    opportunities.'
+- name: real-estate-rec-wk
+  schedule: 0 9 * * 1
+  profile: recruiting-coordinator
+  prompt: 'Weekly recruiting: Open agent reqs, pipeline stage, interview schedule,
+    offer status.'
+- name: real-estate-rec-mid
+  schedule: 0 11 * * 3
+  profile: recruiting-coordinator
+  prompt: 'Mid-week recruiting: Candidate follow-ups, license verification, onboarding
+    starts.'
+- name: real-estate-rec-mo
+  schedule: 0 15 1 * *
+  profile: recruiting-coordinator
+  prompt: 'Monthly recruiting report: Hires, attrition, time-to-hire, agent retention
+    risk.'
+- name: real-estate-boss-eod-delta
+  schedule: 0 20 * * *
+  profile: boss
+  prompt: 'EOD pipeline delta: Net new listings, new leads, offers written, deals
+    closed, at-risk flags vs morning. One-screen Broker view. Send via Twilio SMS.'
+- name: real-estate-inv-1031-tracker
+  schedule: 0 7 * * *
+  profile: investor-specialist
+  prompt: 'Morning 1031 tracker: All active exchanges — days remaining in ID/close
+    window, replacement property status, QI coordination needed. Alert on <7 days.'
+- name: real-estate-inv-portfolio-review
+  schedule: 0 9 * * 1
+  profile: investor-specialist
+  prompt: 'Weekly investor portfolio review: NOI trends, cap rate moves, refi triggers,
+    1031 candidates. Generate investor memos.'
+- name: real-estate-inv-replacement-scan
+  schedule: 0 11 * * *
+  profile: investor-specialist
+  prompt: 'Replacement property scan: New listings matching active 1031 buy boxes.
+    Score by cap rate spread, debt assumability, lease quality.'
+- name: real-estate-regops-compliance
+  schedule: 0 6 * * *
+  profile: regional-ops
+  prompt: 'Daily office compliance scan: License expiries <30 days, CE progress, E&O
+    status. Write to Mnemosyne ops/office_health/<office_id>. Alert Regional Boss
+    + National Ops on breaches.'
+- name: real-estate-regops-health
+  schedule: 0 8 * * 1
+  profile: regional-ops
+  prompt: 'Weekly office health rollup: Agent activity scorecards, CRM adoption, pipeline
+    by agent, vendor issues, expense vs budget. Send to Regional Boss + National Ops.'
+- name: real-estate-regops-trust
+  schedule: 0 9 1 * *
+  profile: regional-ops
+  prompt: 'Monthly trust account reconciliation: Verify transaction platform matches
+    bank statement. Flag any discrepancy >$0.01. Log to Mnemosyne ops/trust_account/<office_id>.'
+- name: real-estate-regops-vendors
+  schedule: 0 10 * * 3
+  profile: regional-ops
+  prompt: 'Mid-week vendor check: Photography turnaround, sign install SLA, print
+    quality, staging inventory. Score vendors 1-5 in Mnemosyne ops/vendor_scores/<office_id>.'
+- name: real-estate-list-ai-cma
+  schedule: '*/15 7-22 * * *'
+  profile: listing-agent
+  prompt: 'AI CMA: For each new listing, pull HouseCanary/ATTOM AVM + MLS comps. Generate
+    pricing recommendation with confidence interval. Write to Mnemosyne listings/cma_ai.
+    Flag if AVM deviates >10% from agent price.'
+- name: real-estate-buy-propensity
+  schedule: '*/15 * * * *'
+  profile: buyer-agent
+  prompt: 'Buyer propensity pulse: Cross-reference active buyers against RealScout/ATTOM
+    propensity scores (equity, life events, search behavior). Re-rank matches by conversion
+    probability. Draft prioritized alerts.'
+- name: real-estate-is-predictive-hot
+  schedule: '*/5 8-21 * * *'
+  profile: inside-sales
+  prompt: 'Predictive hot-lead: Score new inbound leads via ATTOM/Richards Analytics
+    (seller propensity: equity position, tenure, life events). Prioritize outreach
+    by close probability. Auto-draft personalized first touch. Alert Boss on P1 (score
+    >0.8).'
+- name: real-estate-list-seller-propensity
+  schedule: 0 6 * * *
+  profile: listing-agent
+  prompt: 'Seller propensity scan: Query Richards Analytics for homeowners with high
+    sell-probability signals (equity >50%, tenure >7yr, life events: divorce, probate,
+    job relocation, retirement). Cross-ref with farm area. Queue personalized outreach
+    to Inside Sales. Write to Mnemosyne listings/seller_propensity.'
+- name: real-estate-list-offmarket-ai
+  schedule: 0 7,12,17 * * *
+  profile: listing-agent
+  prompt: 'AI off-market scan: Aggregate permitted sources (FSBO portals, investor
+    networks, auction notices, tax delinquency, probate filings) via OffMarket API.
+    Score by investment potential (ARV, discount, days to close). Top 5 to Listing
+    Agent for pocket listing outreach. Log to Mnemosyne listings/offmarket_ai.'
+- name: real-estate-comm-portfolio-analytics
+  schedule: 0 9 * * 1
+  profile: commercial-agent
+  prompt: 'Portfolio analytics weekly: For each investor client, recalc NOI, cap rate
+    trends, debt maturity wall, 1031 exchange candidates, refinance triggers. Generate
+    portfolio memo. Write to Mnemosyne commercial/portfolio_analytics.'
+- name: real-estate-ops-model-train
+  schedule: 0 3 * * 0
+  profile: ops-manager
+  prompt: 'Weekly model retrain: Pull closed-deal outcomes from Mnemosyne (listings,
+    buyer matches, lead scores). Retrain pricing/propensity models on brokerage-specific
+    data. Deploy if AUC improves >2%. Log to ops_state/models.'
+- name: real-estate-boss-institutional-report
+  schedule: 0 6 1 * *
+  profile: boss
+  prompt: 'Monthly institutional report: Fund-level returns (if REIT/fund), agent
+    productivity quartiles, marketing CAC/LTV by channel, market share vs competitors,
+    risk exposure (concentration, vintage). Distribute to stakeholders.'
+- name: real-estate-ops-skill-audit
+  schedule: 0 4 1 * *
+  profile: ops-manager
+  prompt: "FlowEvo skill audit: For each agent, read skill_bank/<agent>/*. Compute:\n\
+    \      - Utility score = success_rate * (1/token_cost) * (1/latency) * usage_freq\n\
+    \      - Flag skills with utility < 0.3 OR negative transfer (success_rate dropped\
+    \ >20% last 30d)\n      - Archive flagged skills to skill_archive/<agent>/ with\
+    \ reason\n      - Report top 5 skills by utility to Boss via Mnemosyne ops_state/skill_audit.\n\
+    \      - If any agent has <3 active skills, trigger workflow→skill compilation\
+    \ from recent successful traces."

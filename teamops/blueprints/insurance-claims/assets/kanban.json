@@ -1,0 +1,34 @@
+{
+  "columns": [
+    "TODO",
+    "IN_PROGRESS",
+    "REVIEW",
+    "DONE"
+  ],
+  "tasks": {
+    "seed_1": {
+      "id": "seed_1",
+      "title": "First-run: map the claims inboxes (INBOX-*.md) and confirm each agent's SOUL matches the carrier context",
+      "assignee": "claims-manager",
+      "status": "TODO",
+      "deliverables": "Replace seed task with real work at deploy.",
+      "notes": "Seed task from the shipped vertical onboarding runbook."
+    },
+    "seed_2": {
+      "id": "seed_2",
+      "title": "Stand up FNOL intake flow and STP threshold for this carrier",
+      "assignee": "intake-specialist",
+      "status": "TODO",
+      "deliverables": "Replace seed task with real work at deploy.",
+      "notes": "Seed task from the shipped vertical onboarding runbook."
+    },
+    "seed_3": {
+      "id": "seed_3",
+      "title": "Seed the shared claims kanban with the open claim queue",
+      "assignee": "claims-manager",
+      "status": "TODO",
+      "deliverables": "Replace seed task with real work at deploy.",
+      "notes": "Seed task from the shipped vertical onboarding runbook."
+    }
+  }
+}
