@@ -1,7 +1,22 @@
 """Tool handlers for hermes-teamops.
 
-D1: Build module live — team_deploy / team_verify / team_rollback / team_factory
-call build.* + factory.*. Watch/Fix/Grow handlers land in D2.
+Contract (Hermes plugin tool API): every handler is
+``def handler(args: dict, **kwargs) -> str`` — it reads its fields from
+``args`` (the dict the LLM passed), never raises, and always returns a JSON
+string. CLI subcommands build that same dict and call the same handlers, so
+the CLI and the tool surface stay in sync.
+
+Path-like arguments (``home``, ``jobs_path``, ``db_path``, ``blueprints_root``,
+``path``) are CLI-only, NOT exposed in the tool schemas (catalog review #6);
+the default HERMES_HOME resolves through ``hermes_constants.get_hermes_home()``
+with an env-var fallback for tests/dev runs outside the Hermes runtime.
+
+OWNER ACTIONS (``team_deploy``, ``team_rollback``, ``team_factory`` with
+``deploy=true``) are gated by a ``pre_tool_call`` hook registered in
+``__init__.py``: the hook returns an ``approve`` directive so the call
+escalates to the human-approval gate, and fails closed in cron/unattended
+runs (catalog review #4). The handlers themselves also defend: they refuse
+to run an owner action when a cron-worker marker is present.
 """
 from __future__ import annotations
 
@@ -13,7 +28,30 @@ from . import build as build_mod
 from . import factory as factory_mod
 
 DEFAULT_BLUEPRINTS = Path(__file__).resolve().parent / "blueprints"
-DEFAULT_HOME = Path(os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")))
+
+# Owner tools also carry the CLI-side refusal when a cron worker marker is
+# present (defense in depth behind the pre_tool_call approve directive).
+OWNER_TOOLS = ("team_deploy", "team_rollback", "team_factory")
+
+
+def default_home() -> Path:
+    """Resolve the default HERMES_HOME via hermes_constants when available
+    (Hermes runtime), falling back to env var / ~/.hermes for tests."""
+    try:
+        from hermes_constants import get_hermes_home
+        return Path(get_hermes_home())
+    except Exception:  # noqa: BLE001 — tests / dev runs without hermes_constants
+        return Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes"))
+
+
+def _params(args: dict | None, kwargs: dict, allowed: set[str]) -> dict:
+    """Merge Hermes-style args dict with explicit kwargs (CLI/tests), keeping
+    only keys the handler understands (context kwargs are dropped)."""
+    merged = dict(args or {})
+    for k in allowed:
+        if k in kwargs and kwargs[k] is not None:
+            merged[k] = kwargs[k]
+    return merged
 
 
 def _ok(data) -> str:
@@ -24,8 +62,15 @@ def _err(message: str) -> str:
     return json.dumps({"success": False, "error": message}, ensure_ascii=False)
 
 
-def blueprint_list(path: str | None = None) -> str:
-    root = Path(path) if path else DEFAULT_BLUEPRINTS
+def _refuse_owner_action() -> bool:
+    """True when running inside a cron worker (no human to approve)."""
+    return bool(os.environ.get("_HERMES_CRON_WORKER_BOOT")
+                or os.environ.get("_HERMES_CRON_EXTERNAL_WORKER"))
+
+
+def blueprint_list(args=None, **kwargs) -> str:
+    p = _params(args, kwargs, {"path"})
+    root = Path(p["path"]) if p.get("path") else DEFAULT_BLUEPRINTS
     if not root.is_dir():
         return _err(f"blueprint dir not found: {root}")
     out = []
@@ -36,7 +81,7 @@ def blueprint_list(path: str | None = None) -> str:
             continue
         meta = {}
         try:
-            import yaml  # lazily; yaml is present in Hermes envs
+            import yaml  # lazily; pyyaml is a declared dependency
             team = d / "team.yaml"
             if team.exists():
                 doc = yaml.safe_load(team.read_text()) or {}
@@ -52,7 +97,7 @@ def _resolve_home_arg(arg: str | None) -> Path:
     """Resolve a --home/jobs_path CLI arg: a directory is a HERMES_HOME,
     a file is treated as jobs.json (its parent is the home)."""
     if not arg:
-        return DEFAULT_HOME
+        return default_home()
     p = Path(arg).expanduser()
     if p.is_dir():
         return p
@@ -61,37 +106,31 @@ def _resolve_home_arg(arg: str | None) -> Path:
     return p
 
 
-def _resolve_blueprint_root(path: str | None) -> Path:
-    if path:
-        p = Path(path).expanduser()
-        if p.is_dir():
-            return p
-    return DEFAULT_BLUEPRINTS
-
-
-def team_deploy(name: str, prefix: str | None = None, dry_run: bool = False,
-                home: str | None = None, verify: bool = True,
-                host: str | None = None, ssh_key: str | None = None,
-                remote_home: str | None = None) -> str:
+def team_deploy(args=None, **kwargs) -> str:
     """Deploy a blueprint — locally by default, or to a VPS via ssh with --host.
 
-    ``host`` is the OPTIONAL SSH transport (Task 2.11): ``user@host[:port]``.
-    Credentials come from the RUNNING USER's own ssh setup (agent / ~/.ssh or
-    ``ssh_key``); the plugin never stores or ships credentials. Missing ssh or
-    failed auth degrades to a clean FAIL check — local deploys are untouched.
+    OWNER ACTION: gated by the pre_tool_call approve directive; also refuses
+    to run inside a cron worker (no human to approve).
     """
+    p = _params(args, kwargs, {"name", "prefix", "dry_run", "host", "ssh_key",
+                               "remote_home", "verify", "home"})
+    name = p.get("name", "")
+    if _refuse_owner_action():
+        return _err("team_deploy is an OWNER ACTION — refused in a cron/unattended run. "
+                    "Run it interactively ('hermes teams deploy ...') so a human approves.")
     try:
-        if host:
+        home = Path(p["home"]) if p.get("home") else None
+        if p.get("host"):
             from . import vps
             return _ok(vps.VpsDeploy(
-                name, host, key=ssh_key, remote_home=remote_home,
-            ).deploy(dry_run=dry_run, verify=verify))
+                name, p["host"], key=p.get("ssh_key"), remote_home=p.get("remote_home"),
+            ).deploy(dry_run=bool(p.get("dry_run")), verify=p.get("verify", True)))
         result = build_mod.deploy_team(
-            name, home=Path(home) if home else None, prefix=prefix, dry_run=dry_run,
-            blueprints_root=_resolve_blueprint_root(None),
+            name, home=home, prefix=p.get("prefix"), dry_run=bool(p.get("dry_run")),
+            blueprints_root=None,
         )
-        if not dry_run and verify and result.get("green"):
-            vresult = build_mod.verify_team(name, home=Path(home) if home else None)
+        if not p.get("dry_run") and p.get("verify", True) and result.get("green"):
+            vresult = build_mod.verify_team(name, home=home)
             result["verify"] = vresult
             result["green"] = vresult.get("green", False)
         return _ok(result)
@@ -99,107 +138,116 @@ def team_deploy(name: str, prefix: str | None = None, dry_run: bool = False,
         return _err(f"team_deploy failed: {e}")
 
 
-def team_verify(name: str, home: str | None = None, blueprints_root: str | None = None,
-                host: str | None = None, ssh_key: str | None = None,
-                remote_home: str | None = None) -> str:
+def team_verify(args=None, **kwargs) -> str:
+    p = _params(args, kwargs, {"name", "host", "ssh_key", "remote_home", "home"})
     try:
-        if host:
+        home = Path(p["home"]) if p.get("home") else None
+        if p.get("host"):
             from . import vps
             return _ok(vps.VpsDeploy(
-                name, host, key=ssh_key, remote_home=remote_home,
+                p["name"], p["host"], key=p.get("ssh_key"), remote_home=p.get("remote_home"),
             ).verify())
-        return _ok(build_mod.verify_team(name, home=Path(home) if home else None,
-                                         blueprints_root=Path(blueprints_root) if blueprints_root else None))
+        return _ok(build_mod.verify_team(p.get("name", ""), home=home))
     except Exception as e:  # noqa: BLE001
         return _err(f"team_verify failed: {e}")
 
 
-def team_rollback(name: str, home: str | None = None, blueprints_root: str | None = None,
-                  host: str | None = None, ssh_key: str | None = None,
-                  remote_home: str | None = None) -> str:
+def team_rollback(args=None, **kwargs) -> str:
+    """OWNER ACTION: undo a deploy from its snapshot. Only teamops-prefixed
+    profiles and files under <home>/teams/<team>/ are ever touched (guard)."""
+    p = _params(args, kwargs, {"name", "host", "ssh_key", "remote_home", "home"})
+    if _refuse_owner_action():
+        return _err("team_rollback is an OWNER ACTION — refused in a cron/unattended run. "
+                    "Run it interactively ('hermes teams rollback ...') so a human approves.")
     try:
-        if host:
+        home = Path(p["home"]) if p.get("home") else None
+        if p.get("host"):
             from . import vps
             return _ok(vps.VpsDeploy(
-                name, host, key=ssh_key, remote_home=remote_home,
+                p["name"], p["host"], key=p.get("ssh_key"), remote_home=p.get("remote_home"),
             ).rollback())
-        return _ok(build_mod.rollback_team(name, home=Path(home) if home else None,
-                                           blueprints_root=Path(blueprints_root) if blueprints_root else None))
+        return _ok(build_mod.rollback_team(p.get("name", ""), home=home))
     except Exception as e:  # noqa: BLE001
         return _err(f"team_rollback failed: {e}")
 
 
-def team_factory(spec: str, base: str | None = None, name: str | None = None,
-                 use_fixture: bool = False, deploy: bool = False,
-                 home: str | None = None) -> str:
+def team_factory(args=None, **kwargs) -> str:
+    """Generate a blueprint from a spec via the built-in template generator.
+
+    deploy=true is an OWNER ACTION (approval required); the generator itself
+    (template + fixture fallback) is safe to run anytime.
+    """
+    p = _params(args, kwargs, {"spec", "base", "name", "use_fixture", "deploy", "home"})
+    if p.get("deploy") and _refuse_owner_action():
+        return _err("team_factory deploy is an OWNER ACTION — refused in a cron/unattended "
+                    "run. Run it interactively ('hermes teams factory ... --deploy').")
     try:
-        if base:
-            spec = f"{spec} (extend the '{base}' blueprint)"
-        root, meta = factory_mod.generate_blueprint(spec, name=name, use_fixture=use_fixture)
+        home = Path(p["home"]) if p.get("home") else None
+        root, meta = factory_mod.generate_blueprint(
+            p.get("spec", ""), name=p.get("name"), base=p.get("base"),
+            use_fixture=bool(p.get("use_fixture")), home=home)
         result = {"blueprint": root.name, "path": str(root), "source": meta.get("source"),
                   "note": meta.get("note", ""), "summary": meta.get("summary", "")}
-        if deploy:
-            d = build_mod.deploy_team(root.name, home=Path(home) if home else None,
+        if p.get("deploy"):
+            d = build_mod.deploy_team(root.name, home=home,
                                       blueprints_root=root.parent)
             result["deploy"] = d
             if d.get("green"):
-                result["verify"] = build_mod.verify_team(root.name, home=Path(home) if home else None,
+                result["verify"] = build_mod.verify_team(root.name, home=home,
                                                          blueprints_root=root.parent)
         return _ok(result)
     except Exception as e:  # noqa: BLE001
         return _err(f"team_factory failed: {e}")
 
 
-def team_status(team: str | None = None, home: str | None = None,
-                html: bool = False, out_path: str | None = None) -> str:
+def team_status(args=None, **kwargs) -> str:
     """Fleet read: per-profile memory %, crons, executions, mesh edges.
 
     ``html=True`` writes a self-contained dashboard (fleet panel + interactive
     mesh graph) and returns its file path instead of the JSON report.
     """
+    p = _params(args, kwargs, {"team", "html", "out_path", "home"})
     try:
         from . import fleet
-        home_p = Path(home) if home else DEFAULT_HOME
-        if html:
+        home_p = Path(p["home"]) if p.get("home") else default_home()
+        if p.get("html"):
             from . import dashboard
             return _ok(dashboard.write_dashboard(
-                home_p, team_filter=team,
-                out_path=Path(out_path) if out_path else None))
-        report = fleet.fleet_report(home_p, team_filter=team)
+                home_p, team_filter=p.get("team"),
+                out_path=Path(p["out_path"]) if p.get("out_path") else None))
+        report = fleet.fleet_report(home_p, team_filter=p.get("team"))
         return _ok(report)
     except Exception as e:  # noqa: BLE001
         return _err(f"team_status failed: {e}")
 
 
-def cron_scan(jobs_path: str | None = None, db_path: str | None = None) -> str:
+def cron_scan(args=None, **kwargs) -> str:
     """Cron911: silent gaps + failures + dead models (detect-only)."""
+    p = _params(args, kwargs, {"jobs_path", "db_path"})
     try:
         from . import cron911
-        home = _resolve_home_arg(jobs_path)
-        db_override = Path(db_path) if db_path else None
+        home = _resolve_home_arg(p.get("jobs_path"))
+        db_override = Path(p["db_path"]) if p.get("db_path") else None
         report = cron911.scan(home, db_override=db_override)
         return _ok(report)
     except Exception as e:  # noqa: BLE001
         return _err(f"cron_scan failed: {e}")
 
 
-def model_scan(home: str | None = None, swap: bool = False, pool: list[str] | None = None,
-               dry_run: bool = True) -> str:
+def model_scan(args=None, **kwargs) -> str:
     """Model Guard: dead/free-gone models + fallback recommendations.
 
     ``swap=False`` (default) is detect + recommend only. ``swap=True`` is the
-    OPT-IN auto-swap mode: with a fallback pool (config key
-    ``modelguard.fallback_pool`` in <home>/config/teamops.yaml, or the
-    ``pool`` argument) dead pinned models and scope defaults are swapped to the
-    first pool fallback. Dry-run by default; set ``dry_run=False`` to apply.
-    Never runs without a pool (refuses cleanly, feature disabled by design).
+    OPT-IN auto-swap mode: dead pinned models and scope defaults are swapped to
+    the first pool fallback. Dry-run by default; never runs without a pool.
     """
+    p = _params(args, kwargs, {"swap", "pool", "dry_run", "home"})
     try:
         from . import modelguard
-        home_p = Path(home) if home else DEFAULT_HOME
-        if not swap:
+        home_p = Path(p["home"]) if p.get("home") else default_home()
+        if not p.get("swap"):
             return _ok(modelguard.scan(home_p))
-        result = modelguard.swap(home_p, pool=pool, dry_run=dry_run)
+        result = modelguard.swap(home_p, pool=p.get("pool"), dry_run=p.get("dry_run", True))
         if not result.get("ok"):
             return _err(result.get("error", "swap failed"))
         return _ok(result)
@@ -207,11 +255,13 @@ def model_scan(home: str | None = None, swap: bool = False, pool: list[str] | No
         return _err(f"model_scan failed: {e}")
 
 
-def model_rollback(home: str | None = None, all_swaps: bool = False) -> str:
+def model_rollback(args=None, **kwargs) -> str:
     """Undo model-guard swaps from the changelog (most recent, or --all)."""
+    p = _params(args, kwargs, {"all_swaps", "home"})
     try:
         from . import modelguard
-        result = modelguard.rollback(Path(home) if home else DEFAULT_HOME, all_swaps=all_swaps)
+        home_p = Path(p["home"]) if p.get("home") else default_home()
+        result = modelguard.rollback(home_p, all_swaps=bool(p.get("all_swaps")))
         if not result.get("ok"):
             return _err(result.get("error", "rollback failed"))
         return _ok(result)
@@ -219,37 +269,43 @@ def model_rollback(home: str | None = None, all_swaps: bool = False) -> str:
         return _err(f"model_rollback failed: {e}")
 
 
-def team_standup(team: str | None = None, hours: int = 24, home: str | None = None) -> str:
+def team_standup(args=None, **kwargs) -> str:
     """Morning digest: last-Nh cron outcomes per profile + open kanban work."""
+    p = _params(args, kwargs, {"team", "hours", "home"})
     try:
         from . import standup
-        report = standup.digest(Path(home) if home else DEFAULT_HOME, team=team, hours=hours)
+        home_p = Path(p["home"]) if p.get("home") else default_home()
+        report = standup.digest(home_p, team=p.get("team"), hours=p.get("hours", 24))
         return _ok(report)
     except Exception as e:  # noqa: BLE001
         return _err(f"team_standup failed: {e}")
 
 
-def mesh_sync(message: str, author: str = "teamops", team: str | None = None, home: str | None = None) -> str:
+def mesh_sync(args=None, **kwargs) -> str:
     """Broadcast a decision to team MESH-MAP.md + shared Mnemosyne surface."""
+    p = _params(args, kwargs, {"message", "author", "team", "home"})
     try:
         from . import meshbridge
-        report = meshbridge.sync(Path(home) if home else DEFAULT_HOME, message, author=author, team=team)
+        home_p = Path(p["home"]) if p.get("home") else default_home()
+        report = meshbridge.sync(home_p, p.get("message", ""), author=p.get("author", "teamops"),
+                                 team=p.get("team"))
         return _ok(report)
     except Exception as e:  # noqa: BLE001
         return _err(f"mesh_sync failed: {e}")
 
 
-def team_dashboard(home: str | None = None, port: int = 8781, open_browser: bool = True) -> str:
+def team_dashboard(args=None, **kwargs) -> str:
     """Start (or reuse) the LIVE dashboard server; data regenerates per request."""
+    p = _params(args, kwargs, {"port", "open_browser", "home"})
     try:
         from . import server
-        home_p = _resolve_home_arg(home)
+        home_p = _resolve_home_arg(p.get("home"))
         pid = server.running(home_p)
         if pid:
-            return _ok({"url": f"http://127.0.0.1:{port}/", "started": False,
+            return _ok({"url": f"http://127.0.0.1:{p.get('port', 8781)}/", "started": False,
                         "running": True, "pid": pid, "home": str(home_p),
                         "note": "live dashboard already running"})
-        r = server.start_daemon(home_p, port, open_browser)
+        r = server.start_daemon(home_p, p.get("port", 8781), p.get("open_browser", True))
         if r.get("ok"):
             return _ok({"url": r.get("url"), "started": True, "running": True,
                         "pid": r.get("pid"), "home": str(home_p),
@@ -259,47 +315,45 @@ def team_dashboard(home: str | None = None, port: int = 8781, open_browser: bool
         return _err(f"team_dashboard failed: {e}")
 
 
-def team_dashboard_status(home: str | None = None) -> str:
+def team_dashboard_status(args=None, **kwargs) -> str:
+    p = _params(args, kwargs, {"home"})
     try:
         from . import server
-        return _ok(server.status(_resolve_home_arg(home)))
+        return _ok(server.status(_resolve_home_arg(p.get("home"))))
     except Exception as e:  # noqa: BLE001
         return _err(f"team_dashboard_status failed: {e}")
 
 
-def team_dashboard_stop(home: str | None = None) -> str:
+def team_dashboard_stop(args=None, **kwargs) -> str:
+    p = _params(args, kwargs, {"home"})
     try:
         from . import server
-        return _ok(server.stop(_resolve_home_arg(home)))
+        return _ok(server.stop(_resolve_home_arg(p.get("home"))))
     except Exception as e:  # noqa: BLE001
         return _err(f"team_dashboard_stop failed: {e}")
 
 
-def phone_intake(payload: dict | None = None, channel: str = "sms",
-                 from_number: str | None = None, to_number: str | None = None,
-                 body: str | None = None, transcript: str | None = None,
-                 call_status: str | None = None, mock: bool = False,
-                 home: str | None = None, persist: bool = True) -> str:
-    """Twilio phone intake: inbound SMS/call -> structured card (Task 2.12).
+def phone_intake(args=None, **kwargs) -> str:
+    """Twilio phone intake: inbound SMS/call -> structured card (OPTIONAL, mock-first).
 
-    OPTIONAL feature, mock-first. Credentials are NEVER stored by the plugin —
-    they are read from the RUNNING USER's env or <home>/config/twilio.env
-    (TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_PHONE_NUMBER). Without
-    them the LIVE path is blocked and this returns a clean 'disabled' refusal;
-    mock=True always runs the pipeline (demos/tests). The structured card is
-    written to <home>/plugin-data/teamops/intake/ as the agent follow-up inbox.
+    Credentials are NEVER stored by the plugin — they are read from the RUNNING
+    USER's env or <home>/config/twilio.env. Without them the LIVE path is blocked
+    and this returns a clean 'disabled' refusal; mock=True always runs.
     """
+    p = _params(args, kwargs, {"payload", "channel", "from_number", "to_number", "body",
+                               "transcript", "call_status", "mock", "home", "persist"})
     try:
         from . import twilio_intake as ti
-        home_p = Path(home) if home else DEFAULT_HOME
-        data = dict(payload or {})
-        for key, val in (("From", from_number), ("To", to_number),
-                         ("Body", body), ("CallStatus", call_status),
-                         ("channel", channel)):
+        home_p = Path(p["home"]) if p.get("home") else default_home()
+        data = dict(p.get("payload") or {})
+        for key, val in (("From", p.get("from_number")), ("To", p.get("to_number")),
+                         ("Body", p.get("body")), ("CallStatus", p.get("call_status")),
+                         ("channel", p.get("channel"))):
             if val is not None:
                 data.setdefault(key, val)
-        result = ti.handle_inbound(data, home=home_p, mock=mock,
-                                   transcript=transcript, persist=persist)
+        result = ti.handle_inbound(data, home=home_p, mock=bool(p.get("mock")),
+                                   transcript=p.get("transcript"),
+                                   persist=p.get("persist", True))
         if not result.get("success"):
             return _err(result.get("error", "twilio intake disabled"))
         return _ok(result)
@@ -307,11 +361,13 @@ def phone_intake(payload: dict | None = None, channel: str = "sms",
         return _err(f"phone_intake failed: {e}")
 
 
-def twilio_status(home: str | None = None) -> str:
+def twilio_status(args=None, **kwargs) -> str:
     """Is Twilio intake configured? (reads YOUR env / <home>/config/twilio.env;
     outputs masked values only — zero nags when disabled.)"""
+    p = _params(args, kwargs, {"home"})
     try:
         from . import twilio_intake as ti
-        return _ok(ti.status(Path(home) if home else DEFAULT_HOME))
+        home_p = Path(p["home"]) if p.get("home") else default_home()
+        return _ok(ti.status(home_p))
     except Exception as e:  # noqa: BLE001
         return _err(f"twilio_status failed: {e}")

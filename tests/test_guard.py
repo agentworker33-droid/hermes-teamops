@@ -220,3 +220,86 @@ def test_fixture_billing_agent_loads():
     bp = Blueprint(ROOT / "teamops" / "blueprints" / "fixtures" / "billing-agent")
     assert bp.name == "billing-agent"
     assert len(bp.roles) == 7
+
+
+# -- catalog review #4/#5: owner-safety + path confinement ---------------------
+
+def test_preflight_rejects_soul_escaping_blueprint_root(tmp_path, sales_bp, monkeypatch):
+    """Review #5: a blueprint whose role soul path escapes its root must FAIL
+    preflight (blueprint-paths check), never write outside the root."""
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    import copy
+    evil_bp = copy.deepcopy(sales_bp)
+    evil_bp.roles[0]["soul"] = "../../../evil.md"
+    guard = DeployGuard(evil_bp, home=tmp_path)
+    guard.runner = FakeRunner()
+    results = guard.preflight()
+    by_name = {r.name: r.status for r in results}
+    assert by_name["blueprint-paths"] == "FAIL"
+
+
+def test_load_blueprint_rejects_arbitrary_path(tmp_path):
+    """Review #5: load_blueprint must not accept an arbitrary filesystem path —
+    only names under the allowed root."""
+    from teamops.build import load_blueprint
+    outside = tmp_path / "outside" / "team.yaml"
+    outside.parent.mkdir(parents=True)
+    outside.write_text("roles: []\n")
+    with pytest.raises(ValueError):
+        load_blueprint(str(outside.parent))
+
+
+def test_rollback_skips_profiles_outside_team_prefix(tmp_path, sales_bp):
+    """Review #4: a profile recorded in the snapshot but NOT prefixed
+    teamops-<team>- is skipped (WARN), never deleted."""
+    home = tmp_path
+    guard = DeployGuard(sales_bp, home=home)
+    guard.runner = FakeRunner()
+    guard.deploy()
+    snap_path = home / "teams" / "sales" / ".teamops-sales.snapshot.json"
+    snap = json.loads(snap_path.read_text())
+    snap["profiles"].append("root-user-profile")
+    snap_path.write_text(json.dumps(snap))
+    rb = DeployGuard(sales_bp, home=home)
+    rb.runner = FakeRunner()
+    results = rb.rollback()
+    by_name = {r.name: r.status for r in results}
+    assert by_name["rollback-profile:root-user-profile"] == "WARN"
+    assert all(r.status != "FAIL" for r in results)
+
+
+def test_rollback_skips_files_outside_team_dir(tmp_path, sales_bp):
+    """Review #4: shared paths outside <home>/teams/<team>/ are skipped (WARN)."""
+    home = tmp_path
+    guard = DeployGuard(sales_bp, home=home)
+    guard.runner = FakeRunner()
+    guard.deploy()
+    victim = tmp_path / "victim.txt"
+    victim.write_text("do not delete")
+    snap_path = home / "teams" / "sales" / ".teamops-sales.snapshot.json"
+    snap = json.loads(snap_path.read_text())
+    snap["shared"].append(str(victim))
+    snap_path.write_text(json.dumps(snap))
+    rb = DeployGuard(sales_bp, home=home)
+    rb.runner = FakeRunner()
+    results = rb.rollback()
+    by_name = {r.name: r.status for r in results}
+    assert by_name["rollback-file:victim.txt"] == "WARN"
+    assert victim.exists(), "rollback must not delete files outside the team shared dir"
+
+
+def test_deploy_honors_cron_allow_agent_scheduling_false(tmp_path, sales_bp, monkeypatch):
+    """Review #4: when the target home config sets cron.allow_agent_scheduling
+    false, deploy does NOT create cron jobs (SKIP rows) but still deploys."""
+    home = tmp_path
+    (home / "config.yaml").write_text("cron:\n  allow_agent_scheduling: false\n")
+    guard = DeployGuard(sales_bp, home=home)
+    runner = FakeRunner()
+    guard.runner = runner
+    results = guard.deploy()
+    by_name = {r.name: r.status for r in results}
+    assert by_name["cron-scheduling"] == "SKIP"
+    assert any(r.name.startswith("cron:") and r.status == "SKIP" for r in results)
+    # no cron-create calls made by the fake runner
+    cron_create = [c for c in runner.calls if len(c) >= 5 and c[1] == "-p" and c[3] == "cron" and c[4] == "create"]
+    assert cron_create == []

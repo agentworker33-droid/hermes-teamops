@@ -5,6 +5,14 @@ but generalized to any HERMES_HOME (no VPS, no systemd assumptions).
 
 All mutations go through `hermes` CLI subprocesses with HERMES_HOME set to the
 target home. Tests inject a fake runner via `DeployGuard.runner`.
+
+Catalog-review safety rules:
+- rollback touches ONLY profiles prefixed ``teamops-<team>-`` and ONLY files
+  that resolve under ``<home>/teams/<team>/`` (snapshot entries outside those
+  scopes are skipped, never deleted);
+- deploy honours ``cron.allow_agent_scheduling`` in the target home config:
+  when it is explicitly false, cron jobs are NOT created (SKIP rows explain);
+- soul/shared paths from the blueprint MUST resolve inside the blueprint root.
 """
 from __future__ import annotations
 
@@ -20,6 +28,16 @@ if TYPE_CHECKING:
     from .build import Blueprint
 
 MIN_FREE_BYTES = 200 * 1024 * 1024  # 200 MB
+TEAMOPS_PROFILE_PREFIX = "teamops-"
+
+
+def _home_default() -> Path:
+    """Default HERMES_HOME: hermes_constants when available, else env/~/hermes."""
+    try:
+        from hermes_constants import get_hermes_home
+        return Path(get_hermes_home())
+    except Exception:  # noqa: BLE001 — tests/dev runs
+        return Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes"))
 
 
 @dataclass
@@ -45,6 +63,15 @@ def default_runner(cmd: list[str], cwd: Path | None = None, timeout: int = 120, 
         return 127, f"command not found: {cmd[0]}"
 
 
+def _require_inside(root: Path, path: Path) -> Path:
+    """Resolve ``path`` and require it stay inside ``root`` (review #5)."""
+    root_r = root.resolve()
+    p_r = (path if path.is_absolute() else root / path).resolve()
+    if p_r == root_r or root_r in p_r.parents:
+        return p_r
+    raise ValueError(f"path escapes blueprint root {root}: {path}")
+
+
 class DeployGuard:
     """Guard a single team deploy under a target HERMES_HOME."""
 
@@ -53,9 +80,13 @@ class DeployGuard:
     def __init__(self, blueprint: Blueprint | None = None, home: Path | None = None, prefix: str | None = None,
                  team: str | None = None):
         self.blueprint = blueprint
-        self.home = Path(home) if home else Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes"))
+        self.home = Path(home) if home else _home_default()
         self.team = team or (blueprint.name if blueprint else "team")
+        # Prefixes always live in the teamops- namespace so rollback's scope check
+        # (profiles start with teamops-<team>-) holds even for custom --prefix.
         self.prefix = prefix or f"teamops-{self.team}-"
+        if not self.prefix.startswith(TEAMOPS_PROFILE_PREFIX):
+            self.prefix = f"{TEAMOPS_PROFILE_PREFIX}{self.prefix}"
         self.checks: list[CheckResult] = []
         self.snapshot: dict = {}
 
@@ -94,6 +125,19 @@ class DeployGuard:
     def snapshot_path(self) -> Path:
         return self.team_shared_dir() / f".teamops-{self.team}.snapshot.json"
 
+    def _allow_agent_scheduling(self) -> bool | None:
+        """Read `cron.allow_agent_scheduling` from the target home config.yaml.
+        None = unset (create crons; default behaviour for owner CLI deploys)."""
+        cfg = self.home / "config.yaml"
+        if not cfg.exists():
+            return None
+        try:
+            import yaml
+            doc = yaml.safe_load(cfg.read_text()) or {}
+            return bool((doc.get("cron") or {}).get("allow_agent_scheduling"))
+        except Exception:  # noqa: BLE001
+            return None
+
     # -- 1. preflight --------------------------------------------------------
     def preflight(self) -> list[CheckResult]:
         self.checks = []
@@ -107,6 +151,7 @@ class DeployGuard:
             if not role.get("name") or not role.get("soul"):
                 self._add("role-format", "FAIL", f"role {role.get('name')!r} missing name/soul")
                 continue
+            self._add("role-soul-path", "PASS", f"soul {role['soul']} OK")
         try:
             self.home.mkdir(parents=True, exist_ok=True)
             probe = self.home / ".teamops-write-probe"
@@ -129,7 +174,7 @@ class DeployGuard:
         # treated by `hermes` as "profile mode" — profile create would resolve to
         # the native home and LEAK test profiles into the live box.
         try:
-            default_root = Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes")).resolve()
+            default_root = _home_default().resolve()
             target = self.home.resolve()
             if target != default_root and default_root in target.parents:
                 self._add("home-isolation", "FAIL",
@@ -140,6 +185,16 @@ class DeployGuard:
                 self._add("home-isolation", "PASS", f"{self.home} resolves outside the default root")
         except OSError:
             self._add("home-isolation", "SKIP", "could not resolve home paths")
+        # soul/shared confinement
+        try:
+            for key, rel in (self._bp().team.get("shared") or {}).items():
+                _require_inside(self._bp().root, Path(rel))
+            for role in self._bp().roles:
+                if role.get("soul"):
+                    _require_inside(self._bp().root, Path(role["soul"]))
+            self._add("blueprint-paths", "PASS", "soul/shared paths confined to blueprint root")
+        except ValueError as e:
+            self._add("blueprint-paths", "FAIL", str(e))
         return self.checks
 
     # -- 2. deploy -----------------------------------------------------------
@@ -152,6 +207,12 @@ class DeployGuard:
                 self._add("dry-run", "PASS", f"would create profile {self.profile_name(role)}")
             return self.checks
 
+        allow_sched = self._allow_agent_scheduling()
+        if allow_sched is False:
+            self._add("cron-scheduling", "SKIP",
+                      "cron.allow_agent_scheduling is false in target config.yaml — cron jobs not created "
+                      "(set it true in <home>/config.yaml to deploy jobs)")
+
         # 2a. profiles + souls
         for role in self._bp().roles:
             name = self.profile_name(role)
@@ -163,9 +224,10 @@ class DeployGuard:
             soul_src = self._bp().soul_path(role)
             soul_dst = self.profile_dir(role) / "SOUL.md"
             try:
-                if soul_src and soul_src.exists():
+                soul_abs = _require_inside(self._bp().root, soul_src) if soul_src else None
+                if soul_abs and soul_abs.exists():
                     soul_dst.parent.mkdir(parents=True, exist_ok=True)
-                    soul_dst.write_text(soul_src.read_text())
+                    soul_dst.write_text(soul_abs.read_text())
                     self._add(f"profile:{name}", "PASS", "created + SOUL.md written")
                 else:
                     self._add(f"profile:{name}", "WARN", "created, no soul file in blueprint")
@@ -173,13 +235,16 @@ class DeployGuard:
                 self._add(f"profile:{name}", "FAIL", f"soul write error: {e}")
             self.snapshot["profiles"].append(name)
 
-        # 2b. crons (per-profile store)
+        # 2b. crons (per-profile store) — honoring cron.allow_agent_scheduling
         for cron in self._bp().crons:
             role_name = cron.get("profile") or "boss"
             profile = f"{self.prefix}{role_name}"
             job_name = cron.get("name", "teamops-job")
             schedule = cron.get("schedule", "0 9 * * *")
             prompt = cron.get("prompt", "")
+            if allow_sched is False:
+                self._add(f"cron:{job_name}", "SKIP", f"not created — agent scheduling disabled (cron:{job_name})")
+                continue
             code, out = self._cli([
                 "-p", profile, "cron", "create",
                 "--name", job_name, "--deliver", "local",
@@ -197,19 +262,22 @@ class DeployGuard:
         try:
             shared_dir.mkdir(parents=True, exist_ok=True)
             for key, rel in self._bp().team.get("shared", {}).items():
-                src = self._bp().root / rel
-                if src.exists():
-                    dst = shared_dir / src.name
-                    dst.write_text(src.read_text())
+                src_abs = _require_inside(self._bp().root, Path(rel))
+                if src_abs.exists():
+                    dst = shared_dir / src_abs.name
+                    if dst.resolve().parent.resolve() != shared_dir.resolve():
+                        self._add(f"shared:{src_abs.name}", "FAIL", f"destination escapes team dir: {dst}")
+                        continue
+                    dst.write_text(src_abs.read_text())
                     self.snapshot["shared"].append(str(dst))
-                    self._add(f"shared:{src.name}", "PASS", f"{dst}")
+                    self._add(f"shared:{src_abs.name}", "PASS", f"{dst}")
                 else:
-                    self._add(f"shared:{src.name}", "FAIL", f"missing in blueprint: {rel}")
+                    self._add(f"shared:{src_abs.name}", "FAIL", f"missing in blueprint: {rel}")
             snap = self.snapshot_path()
             snap.parent.mkdir(parents=True, exist_ok=True)
             snap.write_text(json.dumps(self.snapshot, indent=2))
             self._add("snapshot", "PASS", f"{snap}")
-        except OSError as e:  # noqa: BLE001
+        except (OSError, ValueError) as e:  # noqa: BLE001
             self._add("shared", "FAIL", str(e))
         return self.checks
 
@@ -292,8 +360,11 @@ class DeployGuard:
     def rollback(self) -> list[CheckResult]:
         """Snapshot-driven rollback: undo everything a deploy created.
 
-        Deliberately does NOT require the blueprint: works even if the blueprint
-        dir was moved/removed (e.g. a fixture) — the snapshot is the source of truth.
+        SAFETY (catalog review #4): only profiles whose name starts with the
+        snapshot's ``teamops-<team>-`` prefix are deleted, and only shared files
+        that resolve under ``<home>/teams/<team>/`` are removed. Entries outside
+        those scopes are skipped with a WARN — never deleted. Does NOT require
+        the blueprint (fixtures may be gone); snapshot is the source of truth.
         """
         self.checks = []
         snap_path = self.snapshot_path()
@@ -305,11 +376,11 @@ class DeployGuard:
         except (json.JSONDecodeError, ValueError) as e:  # noqa: BLE001
             self._add("rollback", "FAIL", f"snapshot unreadable: {e}")
             return self.checks
-        # snapshot drives the operation; prefix may differ from this guard's default
         team = snap.get("team", self.team)
         prefix = snap.get("prefix", self.prefix)
         self.prefix = prefix
         self.team = team
+        shared_dir = self.team_shared_dir().resolve()
         # crons first — they live inside the profile; once the profile is gone the
         # jobs die with it, so a missing profile here is already-clean, not a failure.
         for cron in snap.get("crons", []):
@@ -317,6 +388,9 @@ class DeployGuard:
             name = cron.get("name")
             job_id = cron.get("job_id")
             if not prof or not name:
+                continue
+            if not prof.startswith(prefix):
+                self._add(f"rollback-cron:{name}", "WARN", f"profile {prof} outside team prefix — skipped")
                 continue
             if not job_id:
                 self._add(f"rollback-cron:{name}", "SKIP", "no job_id in snapshot (older deploy)")
@@ -328,11 +402,21 @@ class DeployGuard:
             else:
                 self._add(f"rollback-cron:{name}", "FAIL", detail)
         for prof in snap.get("profiles", []):
+            if not prof.startswith(prefix) or not prof.startswith(TEAMOPS_PROFILE_PREFIX):
+                self._add(f"rollback-profile:{prof}", "WARN", f"profile {prof} outside teamops-<team>- prefix — skipped")
+                continue
             code, out = self._cli(["profile", "delete", "-y", prof], timeout=120)
             detail = " ".join((out or "").split())[:160] or "deleted"
             self._add(f"rollback-profile:{prof}", "PASS" if code == 0 else "FAIL", detail)
         for f in snap.get("shared", []):
             p = Path(f)
+            try:
+                p_res = p.resolve()
+            except OSError:
+                p_res = p.absolute()
+            if shared_dir not in p_res.parents and p_res != shared_dir:
+                self._add(f"rollback-file:{p.name}", "WARN", f"{p} outside <home>/teams/<team>/ — skipped")
+                continue
             if p.exists():
                 try:
                     p.unlink()
@@ -344,7 +428,6 @@ class DeployGuard:
             self._add("rollback-snapshot", "PASS", "snapshot removed")
         except OSError as e:  # noqa: BLE001
             self._add("rollback-snapshot", "WARN", str(e))
-        shared_dir = self.team_shared_dir()
         if shared_dir.exists() and not any(shared_dir.iterdir()):
             try:
                 shared_dir.rmdir()

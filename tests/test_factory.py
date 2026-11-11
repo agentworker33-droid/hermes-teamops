@@ -1,4 +1,6 @@
-"""Factory tests (D1): fixture fallback, handoff parsing, mock lane runs."""
+"""Factory tests (catalog review #3): the Agent Factory is template-only —
+no home-dir script runner. Tests cover fixture fallback, spec parsing,
+extend/scaffold generation, and blueprint-root confinement."""
 from __future__ import annotations
 
 import json
@@ -9,167 +11,104 @@ from teamops import factory
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "teamops" / "blueprints" / "fixtures"
+SALES = ROOT / "teamops" / "blueprints" / "sales"
 
 
-def test_generate_blueprint_fixture_when_script_missing(monkeypatch):
-    monkeypatch.setattr(factory, "FACTORY_SCRIPT", Path("/nonexistent/agentic-coding-team.sh"))
-    root, meta = factory.generate_blueprint("add a billing agent to sales", name="billing-agent")
+@pytest.fixture(autouse=True)
+def _isolate_blueprint_root(tmp_path, monkeypatch):
+    """Factory writes go to a temp root, never the repo blueprints dir."""
+    root = tmp_path / "blueprints"
+    root.mkdir()
+    monkeypatch.setattr(factory, "_owner_blueprint_root", lambda home=None: root)
+    return root
+
+
+def test_generate_blueprint_fixture_when_requested(tmp_path):
+    root, meta = factory.generate_blueprint("add a billing agent to sales",
+                                            name="billing-agent", use_fixture=True)
     assert meta["source"] == "fixture"
     assert (root / "team.yaml").exists()
 
 
-def test_generate_blueprint_fallback_when_lane_fails(monkeypatch):
-    def fake_run_lane(spec, timeout=600):
-        return 1, "lane blew up", None
-
-    monkeypatch.setattr(factory, "_run_lane", fake_run_lane)
-    root, meta = factory.generate_blueprint("add a billing agent to sales", name="billing-agent")
+def test_generate_blueprint_fixture_fallback_any(tmp_path):
+    root, meta = factory.generate_blueprint("add a whatever agent to sales",
+                                            name="no-such-fixture", use_fixture=True)
     assert meta["source"] == "fixture"
-    assert "fixture fallback" in meta.get("note", "")
 
 
-def test_generate_blueprint_fallback_when_no_handoff(monkeypatch, tmp_path):
-    ws = tmp_path / "ws"
-    ws.mkdir()
-    (ws / "task.md").write_text("spec")
-    # isolate from the real harness workspace on this box (Task 2.7 live run
-    # left a valid handoff there — the disk fallback would find it)
-    monkeypatch.setattr(factory, "_team_workspace_roots", lambda: [])
-
-    def fake_run_lane(spec, timeout=600):
-        return 0, "done — workspace: " + str(ws), ws
-
-    monkeypatch.setattr(factory, "_run_lane", fake_run_lane)
-    root, meta = factory.generate_blueprint("add a billing agent to sales", name="billing-agent")
-    assert meta["source"] == "fixture"
-    assert "no Validator handoff" in meta.get("note", "")
+def test_generate_blueprint_raises_without_fixture_or_base(tmp_path, monkeypatch):
+    monkeypatch.setattr(factory, "FIXTURES_DIR", tmp_path / "no-fixtures")
+    with pytest.raises(FileNotFoundError):
+        factory.generate_blueprint("add a billing agent to sales", name="billing-agent",
+                                   use_fixture=True)
 
 
-def test_handoff_parse_and_materialize(tmp_path):
-    handoff_dir = tmp_path / "handoffs"
-    handoff_dir.mkdir()
-    handoff = handoff_dir / "onboard-script.json"
-    handoff.write_text(json.dumps({
-        "summary": "Added a billing agent to the sales team.",
-        "blueprint": {
-            "team.yaml": {
-                "name": "sales-plus-billing",
-                "version": "0.1.0",
-                "roles": [
-                    {"name": "boss", "title": "Boss"},
-                    {"name": "billing-agent", "title": "Billing"},
-                ],
-            },
-            "souls": {
-                "boss": "# Boss soul",
-                "billing-agent": "# Billing soul",
-            },
-            "assets": {
-                "kanban.json": {"columns": ["TODO"]},
-            },
-        },
-        "files_created": ["team.yaml", "souls/boss.md", "souls/billing-agent.md"],
-        "check_results": [{"check": "yaml parses", "passed": True}],
-    }))
-    parsed = factory._parse_handoff(handoff)
-    target = tmp_path / "out"
-    factory.blueprint_from_handoff(parsed, "sales-plus-billing", target)
-    assert (target / "team.yaml").exists()
-    assert (target / "souls" / "billing-agent.md").exists()
-    assert (target / "assets" / "kanban.json").exists()
-    text = (target / "team.yaml").read_text()
-    assert "sales-plus-billing" in text
-    assert "souls/billing-agent.md" in text
+def test_parse_spec_add_role_to_base():
+    assert factory._parse_spec("add a billing agent to sales") == ("billing-agent", "sales")
+    assert factory._parse_spec("add an ops lead to the property-mgmt team") == (
+        "ops-lead", "property-mgmt")
+    assert factory._parse_spec("extend the sales blueprint with a support lead") == (
+        "support-lead", "sales")
+    assert factory._parse_spec("random words") == (None, None)
 
 
-def test_extract_workspace_with_spaces(tmp_path):
-    """Regression: task ids keep spaces ('3-agent lawn-care ops team-…'), the
-    old token-split extraction missed them and fell back to an empty tmp dir."""
-    ws = tmp_path / "3-agent lawn-care ops team-20261108_213020"
-    ws.mkdir()
-    out = f"\x1b[34m[agentic-team]\x1b[0m task workspace: {ws}\n[OK] Done. Workspace: {ws}\n"
-    assert factory._extract_workspace(out) == ws
+def test_roles_from_spec_scaffold():
+    roles = factory._roles_from_spec("3-agent lawn-care team: dispatcher, field-agent, boss",
+                                     fallback="generated")
+    assert roles == ["dispatcher", "field-agent", "boss"]
+    assert factory._roles_from_spec("no roles here", fallback="ops") == ["ops"]
 
 
-def test_extract_workspace_returns_none_when_missing(tmp_path):
-    assert factory._extract_workspace("no workspace marker here\n") is None
-    assert factory._extract_workspace(f"task workspace: {tmp_path / 'nope'}") is None
+def test_generate_blueprint_extend_base(tmp_path):
+    root, meta = factory.generate_blueprint("add a billing agent to sales", name="sales-billing")
+    assert meta["source"] == "extend"
+    import yaml
+    doc = yaml.safe_load((root / "team.yaml").read_text())
+    roles = [r["name"] for r in doc["roles"]]
+    assert "billing-agent" in roles
+    assert (root / "souls" / "billing-agent.md").exists()
+    assert (root / "crons.yaml").exists()
+    mesh = json.loads((root / "assets" / "mesh.json").read_text())
+    assert any(e["to"] == "billing-agent" for e in mesh["edges"])
+    kanban = json.loads((root / "assets" / "kanban.json").read_text())
+    assert "billing-agent" in kanban["tasks"]["seed_1"]["assignee"] or any(
+        t["assignee"] == "billing-agent" for t in kanban["tasks"].values())
 
 
-def test_find_handoff_fallback_team_workspace(tmp_path, monkeypatch):
-    """Regression: when output parsing misses the workspace (e.g. spaces), the
-    disk search under ~/.hermes/ng-team/workspace still locates the handoff."""
-    ws = tmp_path / "ng-team" / "workspace" / "3-agent lawn-care ops team-20261108_213020" / "handoffs"
-    ws.mkdir(parents=True)
-    handoff = ws / "onboard-script.json"
-    handoff.write_text('{"status": "complete"}')
-    monkeypatch.setattr(factory, "_team_workspace_roots", lambda: [tmp_path / "ng-team" / "workspace"])
-    found = factory._find_handoff(None)
-    assert found is not None and found.name == "onboard-script.json"
+def test_generate_blueprint_extend_base_not_found(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        factory.generate_blueprint("add a billing agent to nosuchbase", name="x")
 
 
-def test_blueprint_from_artifacts_real_schema(tmp_path):
-    """The agent-factory lane's real onboarding-script.json lists artifact paths
-    on disk (no embedded team.yaml). blueprint_from_handoff must convert that
-    into a deployable blueprint: team.yaml, crons.yaml, souls, mesh, kanban."""
-    arts = tmp_path / "artifacts"
-    arts.mkdir()
-    (arts / "MESH-MAP.md").write_text(
-        "# LawnCare Co - MESH-MAP (3-agent lawn-care ops team)\n\n"
-        "Slug: lawncare-co\n"
-        "Roster: R1 dispatcher, R2 field-agent, R3 boss\n"
-        "Plan: $350/mo\n\n"
-        "## Edges\n\n"
-        "| E1 | dispatcher -> field-agent | Daily dispatch: write assignments into INBOX-field-agent.md |\n"
-        "| E2 | field-agent -> boss | Weekly inspection: write ops report into INBOX-boss.md |\n"
-        "| E3 | boss -> dispatcher | Morning brief: write priorities into INBOX-dispatcher.md |\n")
-    (arts / "README.md").write_text(
-        "# LawnCare Co\n\n## Roster\n\n| R# | Agent | Role |\n| --- | --- | --- |\n"
-        "| R1 | dispatcher | Daily dispatch / work-order writer |\n"
-        "| R2 | field-agent | Weekly inspection / ops reports |\n"
-        "| R3 | boss | Morning brief / oversight |\n\n## Cron jobs\n\n"
-        "| Cron name | Schedule | Agent |\n| --- | --- | --- |\n"
-        "| lawncare-co-dispatcher-daily-dispatch | 0 8 * * * | dispatcher |\n"
-        "| lawncare-co-field-agent-weekly-inspection | 0 9 * * 6 | field-agent |\n"
-        "| lawncare-co-boss-morning-brief | 0 7 * * * | boss |\n")
-    for role, body in [
-        ("dispatcher", "Daily dispatch agent."),
-        ("field-agent", "Weekly inspection agent."),
-        ("boss", "Morning brief agent."),
-    ]:
-        (arts / f"INBOX-{role}.md").write_text(f"# INBOX - {role}\n\n{body}\n")
-    (arts / "onboard-lawn-care.sh").write_text("#!/bin/bash\necho hi\n")
-    (arts / "verify-lawn-care.sh").write_text("#!/bin/bash\necho ok\n")
+def test_generate_blueprint_extend_duplicate_role_rejected(tmp_path):
+    # 'boss' already exists in the sales blueprint -> ValueError, no directory
+    with pytest.raises(ValueError):
+        factory.generate_blueprint("add a boss to sales", name="sales-boss2")
+    assert not (tmp_path / "blueprints" / "sales-boss2").exists()
 
-    files_created = [str(p) for p in sorted(arts.iterdir())]
-    parsed = {
-        "summary": "Implemented the 3-agent lawn-care ops team.",
-        "blueprint": {},
-        "files_created": files_created,
-        "checks": [{
-            "check": "dry-run smoke",
-            "passed": True,
-            "output": ("DRY_RUN_CRON lawncare-co-dispatcher-daily-dispatch|0 8 * * *|dispatcher\n"
-                        "DRY_RUN_CRON lawncare-co-field-agent-weekly-inspection|0 9 * * 6|field-agent\n"
-                        "DRY_RUN_CRON lawncare-co-boss-morning-brief|0 7 * * *|boss\n"),
-        }],
-    }
-    target = tmp_path / "out"
-    factory.blueprint_from_handoff(parsed, "lawn-care-ops", target)
 
-    team = (target / "team.yaml").read_text()
-    assert "lawn-care-ops" in team
-    assert "dispatcher" in team and "field-agent" in team and "boss" in team
-    crons = (target / "crons.yaml").read_text()
-    assert "0 8 * * *" in crons and "0 9 * * 6" in crons and "0 7 * * *" in crons
-    mesh = json.loads((target / "assets" / "mesh.json").read_text())
-    assert len(mesh["edges"]) == 3
-    assert mesh["edges"][0]["from"] == "dispatcher"
-    # drop-file contract: source writes into the DESTINATION's INBOX
-    assert mesh["edges"][0]["artifact"] == "INBOX-field-agent.md"
-    assert mesh["edges"][1]["artifact"] == "INBOX-boss.md"
-    assert mesh["edges"][2]["artifact"] == "INBOX-dispatcher.md"
-    assert (target / "souls" / "dispatcher.md").exists()
-    assert (target / "souls" / "boss.md").exists()
-    assert (target / "assets" / "kanban.json").exists()
-    assert (target / "assets" / "generated" / "onboard-lawn-care.sh").exists()
+def test_generate_blueprint_scaffold(tmp_path):
+    root, meta = factory.generate_blueprint("3-agent lawn-care team: dispatcher, field-agent, boss")
+    assert meta["source"] == "scaffold"
+    text = (root / "team.yaml").read_text()
+    assert "dispatcher" in text and "field-agent" in text and "boss" in text
+    assert (root / "souls" / "dispatcher.md").exists()
+    assert (root / "assets" / "mesh.json").exists()
+    assert (root / "crons.yaml").exists()
+
+
+def test_blueprint_root_confinement(tmp_path, monkeypatch):
+    """Writing must stay inside the owner-configured root."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    monkeypatch.setattr(factory, "_owner_blueprint_root", lambda home=None: outside)
+    root, meta = factory.generate_blueprint("add a billing agent to sales", name="confined")
+    assert root == outside / "confined"
+    assert root.is_dir()
+
+
+def test_bake_fixture_from_sales(tmp_path):
+    dst = factory.bake_fixture_from("sales", target_name="bake-test")
+    assert (dst / "team.yaml").exists()
+    import shutil
+    shutil.rmtree(dst)

@@ -1,6 +1,6 @@
 ---
 name: teamops
-description: When and how to use the hermes-teamops plugin tools — deploy a team blueprint, verify with Deploy Guard, roll back, generate via the Agent Factory, or run fleet status / Cron911 / Model Guard / standup / mesh sync.
+description: When and how to use the hermes-teamops plugin tools — deploy a team blueprint, verify with Deploy Guard, roll back, generate via the Agent Factory template generator, or run fleet status / Cron911 / Model Guard / standup / mesh sync.
 category: team-operations
 ---
 
@@ -15,11 +15,11 @@ matching tools.
 
 | Tool / CLI | Use it when... |
 |---|---|
-| `blueprint_list` / `hermes teams list` | "What teams can I deploy?" — sales, property-mgmt |
-| `team_deploy` / `hermes teams deploy <name>` | "Stand up the sales team" — creates profiles, SOULs, crons, kanban, mesh under a TEMP or real HERMES_HOME |
+| `blueprint_list` / `hermes teams list` | "What teams can I deploy?" — sales, property-mgmt, lawn-care-ops, ported verticals |
+| `team_deploy` / `hermes teams deploy <name>` | "Stand up the sales team" — creates profiles, SOULs, crons, kanban, mesh under a real HERMES_HOME. **Owner action:** runs only with human approval; never in cron/unattended runs. |
 | `team_verify` / `hermes teams verify <name>` | After any deploy/factory run — run Deploy Guard preflight/smoke and show the PASS/FAIL table |
-| `team_rollback` / `hermes teams rollback <name>` | Remove a deployed team (profiles, crons, shared files) from a snapshot |
-| `team_factory` / `hermes teams factory "<spec>"` | Generate a custom blueprint from a natural-language spec (fixture fallback by default) |
+| `team_rollback` / `hermes teams rollback <name>` | Remove a deployed team (profiles, crons, shared files) from a snapshot. **Owner action:** approval required; deletes only teamops-prefixed profiles and files under `<home>/teams/<team>/`. |
+| `team_factory` / `hermes teams factory "<spec>"` | Generate a custom blueprint with the built-in template generator (extend a base blueprint with a role, or scaffold a new team). `--deploy` is an owner action. |
 | `team_status` / `hermes teams status` | "Show me the fleet" — per-profile memory %, crons, executions, mesh edges |
 | `cron_scan` / `hermes teams cron-scan` | "Is anything silently failing?" — silent gaps, failure streaks, dead models |
 | `model_scan` / `hermes teams model-scan` | "Is my model dead?" — 404/free-gone pinned or profile-default models + fallback suggestions |
@@ -32,15 +32,22 @@ matching tools.
    deploy output alone — run `team_verify` and only claim success when the
    PASS/FAIL table is green.
 2. **Temp home for tests:** when the user just wants to try it, run against a
-   scratch HERMES_HOME under /tmp, never the live box, unless they explicitly
-   ask for the live deploy.
+   scratch HERMES_HOME OUTSIDE the default hermes root — never the live box —
+   unless they explicitly ask for the live deploy. Deploy Guard's
+   `home-isolation` preflight refuses a target inside the default hermes root.
 3. **Detect, don't auto-fix:** `cron_scan` and `model_scan` only detect and
    recommend. If the user asks to fix, suggest `hermes cron edit <id> --model <m>`
-   or `hermes cron pause <id>` — do NOT silently rewrite live jobs.
-4. **Secrets:** never ask for API keys in chat. Point to `hermes-vault add`
-   or the Autonomous Secrets Store.
+   or `hermes cron pause <id>` — do NOT silently rewrite live jobs. Model swap
+   is opt-in and changelogged; never run it without an explicit pool.
+4. **Secrets:** never ask for API keys in chat. Point the user to Hermes's own
+   secret/credential flow for their keys — the plugin itself never stores
+   credentials (Twilio/SSH read the RUNNING USER's env/setup only).
 5. **Honesty:** if a scan returns no issues, say healthy. If a tool errored,
    report the error verbatim rather than fabricating a clean result.
+6. **Blueprints are local data:** deploys read blueprints from the plugin's
+   `blueprints/` dir (or an owner-configured `factory.blueprints_root`); the
+   plugin never writes outside that root plus the target home's own
+   `profiles/` and `teams/` directories.
 
 ## Data conventions (dashboard reads these)
 
@@ -59,8 +66,8 @@ matching tools.
 
 ## Fallbacks
 
-- `team_factory` may fall back to the pre-baked `billing-agent` fixture when
-  the live Agent Factory lane is unavailable — that is by design (plan §1.5);
-  the result still deploys and verifies.
+- `team_factory` uses the in-plugin template generator; `use_fixture=true`
+  (demo) returns the pre-baked `billing-agent` fixture. The result still
+  deploys and verifies.
 - `mesh_sync` writes MESH-MAP.md locally; if the shared Mnemosyne surface
-  isn't importable it leaves an outbox entry in `~/.hermes/teams/.mesh-outbox.jsonl`.
+  isn't importable it leaves an outbox entry in `<home>/teams/.mesh-outbox.jsonl`.

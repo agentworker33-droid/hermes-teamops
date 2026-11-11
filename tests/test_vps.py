@@ -279,7 +279,7 @@ def test_driver_script_syntax():
 
 # -- tool + CLI wiring --------------------------------------------------------
 def test_tools_team_deploy_routes_to_vps(fake_runner):
-    out = json.loads(tools.team_deploy("sales", host="user@vps"))
+    out = json.loads(tools.team_deploy({"name": "sales", "host": "user@vps"}))
     assert out["success"] is True
     assert out["mode"] == "vps"
     assert out["host"] == "user@vps"
@@ -287,15 +287,15 @@ def test_tools_team_deploy_routes_to_vps(fake_runner):
 
 
 def test_tools_team_verify_and_rollback_host(fake_runner):
-    v = json.loads(tools.team_verify("sales", host="user@vps"))
+    v = json.loads(tools.team_verify({"name": "sales", "host": "user@vps"}))
     assert v["mode"] == "vps" and v["green"] is True
-    r = json.loads(tools.team_rollback("sales", host="user@vps"))
+    r = json.loads(tools.team_rollback({"name": "sales", "host": "user@vps"}))
     assert r["mode"] == "vps" and r["green"] is True
 
 
 def test_tools_team_deploy_no_host_still_local(tmp_path):
     """Without --host nothing about vps runs — local path stays local."""
-    out = json.loads(tools.team_deploy("sales", home=str(tmp_path), dry_run=True))
+    out = json.loads(tools.team_deploy({"name": "sales", "home": str(tmp_path), "dry_run": True}))
     assert out["success"] is True
     assert out.get("mode") != "vps"
 
@@ -325,7 +325,9 @@ def test_manifest_schemas_include_vps_params():
     """The new host/ssh_key/remote_home schema params don't break coherence."""
     from teamops import schemas
     for tool in ("team_deploy", "team_verify", "team_rollback"):
-        props = schemas.SCHEMAS[tool]["schema"]["properties"]
+        props = schemas.SCHEMAS[tool]["schema"]["parameters"]["properties"]
         assert "host" in props
         assert "ssh_key" in props
         assert "remote_home" in props
+        banned = {"home", "jobs_path", "db_path", "blueprints_root", "path"} & set(props)
+        assert not banned, f"{tool} leaks path args: {banned}"

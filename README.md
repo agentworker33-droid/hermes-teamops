@@ -2,8 +2,8 @@
 
 Build, run, watch, fix, and grow a multi-agent team — one plugin.
 
-**TeamOps** = blueprint installer (deploy a whole team: profiles, SOULs, skills, crons, kanban, mesh)
-+ Agent Factory (generate custom blueprints from a spec)
+**TeamOps** = blueprint installer (deploy a whole team: profiles, SOULs, crons, kanban, mesh)
++ Agent Factory (in-plugin template generator: extend a base blueprint with a role, or scaffold a new team)
 + Deploy Guard (preflight / smoke / rollback)
 + fleet status + mesh view + Cron911 (silent-gap detection) + Model Guard + team standup + mesh sync.
 
@@ -15,18 +15,14 @@ CLI: `hermes teams <command>`. Tool surface mirrors it: `blueprint_list`, `team_
 Plan: `~/.hermes/plans/2026-11-08_0450-hermes-teamops-plugin.md`
 Build worklog: `WORKLOG.md` (cron shifts append here after every task).
 
-Status: **D2 — Watch/Fix/Grow implemented + tested + Task 2.8 web dashboard
-(`status --html`, interactive mesh graph) + live dashboard server
-(`teams dashboard`, daemon + /health + stop) + Task 2.9 OPT-IN auto model-swap
-(`model-scan --swap --pool a,b [--apply]`, changelog + `model-rollback`) + Task
-2.10 ported vertical blueprints (`insurance-claims`, `real-estate`, `trading`
-— the shipped onboard-*.sh teams) + rollback empty-dir fix + Task 2.11 OPTIONAL
-VPS provisioning (`deploy/verify/rollback --host user@host[:port]` — remote
-transport over ssh using YOUR OWN credentials; graceful no-creds degrade) +
-Task 2.12 OPTIONAL Twilio phone intake (`phone-intake` / `twilio-status`,
-mock-first inbound SMS/call → triage card; real calls blocked until YOUR
-Twilio creds are in env / `<home>/config/twilio.env`; graceful no-creds
-degrade). 160 tests. Next: D3 ship (PR, video, form).**
+Status: **catalog review fixes landed (Nov 10 evening)** — all 7 reviewer points from
+PR #151675: Hermes dict-args tool contract + OpenAI-shape schemas; PyYAML declared in
+`python_dependencies`; Agent Factory is now template-only (no home-dir script runner);
+deploy/rollback/factory-deploy are OWNER ACTIONS gated by a `pre_tool_call` approve
+hook and refused in cron/unattended runs; blueprint/soul/shared paths confined to the
+blueprint root; path args removed from tool schemas (CLI-only) + `hermes_constants`
+home resolution; docs/skill match the code, skill registered via `ctx.register_skill`.
+180 tests. D2/D3 work (dashboard, model-swap, verticals, VPS, Twilio) all green.**
 
 ## Install
 
@@ -105,8 +101,9 @@ Dress-rehearsed on a temp HERMES_HOME in D2.6.
 
 ## Blueprints (v0.1)
 
-A blueprint is a directory: `team.yaml` (roles/crons), `souls/<role>.md`,
-`crons.yaml`, `assets/kanban.json`, `assets/mesh.json`, `verify.yaml`.
+A blueprint is a directory: `team.yaml` (roles), `souls/<role>.md`,
+`crons.yaml`, `assets/kanban.json`, `assets/mesh.json` (Deploy Guard's smoke
+checks are code-defined — no separate `verify.yaml` file).
 Baked v1: `sales` (6 roles), `property-mgmt` (owner / tenant-line boundary /
 maintenance coordinator / books), `lawn-care-ops` (factory-materialized), plus
 three **ported verticals** from the shipped onboarding runbooks: `insurance-claims`
@@ -115,8 +112,8 @@ compliance, monitor + 4 satellites), `real-estate` (14 roles — broker + listin
 buyer agents, inside sales, transaction coordinator, marketing, ops, client care,
 document processor, market intelligence + industry tier), `trading` (10 roles —
 boss, researcher, analyst, executor, risk-manager, portfolio-manager, monitor +
-polymarket/launch-sniper/yield-farmer satellites). The `fixtures/billing-agent`
-fallback used by the Agent Factory when the live lane is unavailable.
+polymarket/launch-sniper/yield-farmer satellites). `fixtures/billing-agent` is
+the pre-baked demo output of the Agent Factory (`use_fixture=true`).
 
 ## Modules
 
@@ -125,7 +122,7 @@ fallback used by the Agent Factory when the live lane is unavailable.
 | `build.py` | blueprint loader + deploy/verify/rollback orchestration |
 | `guard.py` | Deploy Guard: preflight / deploy / smoke / rollback (local, not VPS) |
 | `vps.py` | OPTIONAL VPS provisioning: deploy/verify/rollback `--host user@host[:port]` — remote preflight (python/disk/RAM/home), tar-stream bundle upload, remote driver `scripts/remote-driver.py`, staging cleanup; creds = the RUNNING USER's own ssh (agent/keys or `--ssh-key`), never stored; no ssh/auth → clean disable, locals untouched |
-| `factory.py` | Agent Factory wrapper (fixture fallback) |
+| `factory.py` | Agent Factory (template-only generator: extend a base blueprint with a role, or scaffold a team; fixture fallback for demos) |
 | `fleet.py` | fleet reads: profiles, jobs.json, executions.db, memory %, mesh; team grouping + ephemeral-team inventory |
 | `dashboard.py` | self-contained HTML dashboard (fleet panel, cron health, interactive SVG mesh graph; no CDN) |
 | `server.py` | LIVE dashboard server: fresh HTML per request, /health, daemonize, stop (mnemosyne-dashboard pattern) |
@@ -142,17 +139,19 @@ fallback used by the Agent Factory when the live lane is unavailable.
 python3 -m pytest -q
 ```
 
-160 tests: blueprint loader (+ structural integrity for all 6 baked blueprints:
+180 tests: blueprint loader (+ structural integrity for all 6 baked blueprints:
 roles→souls, cron→role references, unique prefixed cron names, mesh→role edges,
-kanban assignees), Deploy Guard (mocked hermes), factory fallback,
+kanban assignees), Deploy Guard (mocked hermes; rollback scope confinement;
+cron.allow_agent_scheduling honouring), factory template generator + fixtures,
 fleet/cron911/modelguard/standup/meshbridge/dashboard/server against a fake HERMES_HOME
 built with the real jobs.json + executions.db schema, VPS provisioning via a
 FAKE ssh runner (host parsing, remote preflight decisions, bundle upload,
 remote deploy/verify/rollback, graceful no-creds degrade), Twilio intake
 config (env + dotenv source, masked output), payload parsing, intent triage,
 full mock pipeline + ledger, live-blocked-without-creds refusal, tool + CLI
-wiring, plus a manifest-coherence test pinning plugin.yaml ⇄ schemas ⇄ handlers
-and model-swap pool/rollback tests.
+wiring, plus a manifest-coherence test pinning plugin.yaml ⇄ schemas ⇄ handlers,
+the Hermes dict-args handler contract (handler({"name": "sales"})), and
+model-swap pool/rollback tests.
 
 ## Cut list (NOT in v1)
 

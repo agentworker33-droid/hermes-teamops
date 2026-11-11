@@ -1,9 +1,28 @@
-"""Build module: blueprint loader + deploy/verify/rollback orchestration."""
+"""Build module: blueprint loader + deploy/verify/rollback orchestration.
+
+Catalog review #5: blueprint names/paths resolve ONLY under the plugin's
+``blueprints/`` dir or an owner-configured root — arbitrary filesystem paths
+are rejected. Soul/shared rel paths are confined to the blueprint root by
+``guard._require_inside`` at preflight/deploy time.
+"""
 from __future__ import annotations
 
 from pathlib import Path
 
-from .guard import DeployGuard
+from .guard import DeployGuard, _require_inside
+
+DEFAULT_BLUEPRINTS = Path(__file__).resolve().parent / "blueprints"
+
+
+def _resolve_blueprint_root(blueprints_root: Path | None) -> Path:
+    """Owner-configurable blueprint root: explicit arg, env var, or default."""
+    if blueprints_root is not None:
+        return Path(blueprints_root)
+    import os
+    env = os.environ.get("TEAMOPS_BLUEPRINTS_ROOT")
+    if env:
+        return Path(env).expanduser()
+    return DEFAULT_BLUEPRINTS
 
 
 class Blueprint:
@@ -18,7 +37,7 @@ class Blueprint:
         try:
             import yaml
         except ImportError as e:  # pragma: no cover
-            raise RuntimeError("PyYAML required") from e
+            raise RuntimeError("PyYAML required (declare python_dependencies)") from e
         team_path = self.root / "team.yaml"
         crons_path = self.root / "crons.yaml"
         if not team_path.exists():
@@ -36,19 +55,25 @@ class Blueprint:
         rel = role.get("soul")
         if not rel:
             return None
-        return self.root / rel
+        return _require_inside(self.root, Path(rel))
 
 
 def load_blueprint(name_or_path: str, blueprints_root: Path | None = None) -> Blueprint:
-    """Resolve a blueprint name (or path) to a Blueprint."""
-    p = Path(name_or_path)
-    if p.exists():
-        root = p if p.name == "team.yaml" or (p / "team.yaml").exists() else p
-        if not (root / "team.yaml").exists():
-            # maybe passed path to team.yaml itself
-            root = p.parent
-        return Blueprint(root)
-    root = (blueprints_root or Path(__file__).resolve().parent / "blueprints") / name_or_path
+    """Resolve a blueprint NAME under the allowed root (never an arbitrary path).
+
+    ``name_or_path`` may be a bare name ('sales') or a path; if a path, it must
+    resolve inside the allowed blueprint root, otherwise ValueError.
+    """
+    root_dir = _resolve_blueprint_root(blueprints_root).resolve()
+    p = Path(name_or_path).expanduser()
+    if p.is_absolute() or (p.parent != Path(".") and (p / "team.yaml").exists()):
+        candidate = p if p.is_absolute() else (root_dir / p)
+        cand_r = candidate.resolve()
+        if cand_r != root_dir and root_dir not in cand_r.parents:
+            raise ValueError(f"blueprint path escapes allowed root {root_dir}: {name_or_path}")
+        root = cand_r if (cand_r / "team.yaml").exists() else cand_r.parent
+    else:
+        root = (root_dir / name_or_path).resolve()
     return Blueprint(root)
 
 
