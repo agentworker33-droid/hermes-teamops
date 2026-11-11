@@ -242,3 +242,33 @@ def test_load_hermes_theme_user_yaml(tmp_path):
     assert theme["name"] == "night-ops"
     assert theme["bg"] == "#101820"
     assert theme["overrides"]["success"] == "#88ffaa"
+
+
+# ---- needs-you strip (Task 2.14) ----
+
+def test_needs_strip_present_with_failed_run_and_cron_flags(tmp_path):
+    home = _home_with_fleet(tmp_path)
+    d = home / "plugin-data" / "teamops-dashboard" / "runs"
+    d.mkdir(parents=True)
+    (d / "r1.json").write_text(json.dumps({
+        "id": "r1", "state": "failed", "title": "deploy x", "team": "sales",
+        "nodes": [{"id": "n", "label": "n", "state": "failed", "deps": []}],
+    }))
+    data = dashboard.collect(home)
+    kinds = [n["kind"] for n in data["needs"]]
+    assert "run" in kinds
+    assert any(n["title"].startswith("Run:") for n in data["needs"])
+    html = dashboard.render_html(data)
+    assert 'id="needs-w"' in html
+    assert "need you" in html
+    assert "data-jump" in html
+
+
+def test_needs_strip_absent_when_clean(tmp_path):
+    home = tmp_path / "home"
+    (home / "cron").mkdir(parents=True)
+    (home / "cron" / "jobs.json").write_text('{"jobs": []}')
+    data = dashboard.collect(home)
+    assert data["needs"] == []
+    html = dashboard.render_html(data)
+    assert 'id="needs-w"' not in html

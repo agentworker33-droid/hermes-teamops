@@ -607,6 +607,40 @@ _RUN_CSS = """
 .runs-list.capped .run-row[data-show-after] { display: none; }
 """
 
+_NEEDS_CSS = """
+/* ---------- needs-you strip ---------- */
+.needs-w { position: relative; max-width: 1204px; margin: 0 40px 18px; z-index: 50; }
+.needs-strip {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  font-family: var(--mono); font-size: 12.5px; color: var(--txt);
+  background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+  border-radius: 9px; padding: 10px 14px; cursor: pointer;
+}
+.needs-strip:hover { border-color: var(--line2); }
+.needs-ic { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--pulse-glow); animation: rpulse 1.6s ease-in-out infinite; }
+.needs-t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mut); }
+.needs-t b { color: var(--white); }
+.needs-k { color: var(--dim); font-size: 10px; letter-spacing: 1.4px; }
+.needs-list {
+  display: none; position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+  background: var(--panel2); border: 1px solid var(--line2); border-radius: 10px;
+  padding: 5px; box-shadow: 0 18px 48px rgba(0,0,0,.6); z-index: 60;
+}
+.needs-w.open .needs-list { display: block; }
+.needs-item {
+  display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left;
+  font-family: var(--mono); font-size: 12px; color: var(--mut);
+  background: transparent; border: 0; border-bottom: 1px solid var(--line);
+  padding: 9px 8px; cursor: pointer;
+}
+.needs-item:last-child { border-bottom: 0; }
+.needs-item:hover { color: var(--txt); background: var(--hover2); }
+.needs-item .ni-k { text-transform: uppercase; font-size: 9px; letter-spacing: 1.2px; color: var(--dim); min-width: 40px; flex-shrink: 0; }
+.needs-item .ni-t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.needs-item .ni-d { color: var(--dim); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46%; }
+.needs-more { font-family: var(--mono); font-size: 11px; color: var(--dim); padding: 8px; text-align: center; }
+"""
+
 _RUN_JS = """
 (function () {
   var RUNS = window.__RUNS__ || [];
@@ -738,6 +772,31 @@ _RUN_JS = """
   if (more) more.addEventListener('click', function () { if (listEl) listEl.classList.remove('capped'); });
   var on = document.querySelector('.run-row.on');
   select(on ? on.getAttribute('data-run') : RUNS[0].id);
+  window.__teamopsSelectRun = select;
+})();
+"""
+
+_NEEDS_JS = """
+(function () {
+  var w = document.getElementById('needs-w');
+  if (!w) return;
+  var strip = document.getElementById('needs-strip');
+  if (strip) strip.addEventListener('click', function () { w.classList.toggle('open'); });
+  document.addEventListener('click', function (e) {
+    if (w && !w.contains(e.target)) w.classList.remove('open');
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') w.classList.remove('open');
+  });
+  w.addEventListener('click', function (e) {
+    var item = e.target.closest ? e.target.closest('.needs-item') : null;
+    if (!item) return;
+    w.classList.remove('open');
+    var jump = item.getAttribute('data-jump') || 'cron';
+    var run = item.getAttribute('data-run');
+    if (jump === 'runs' && run) location.hash = '#/runs:' + encodeURIComponent(run);
+    else location.hash = '#/' + jump;
+  });
 })();
 """
 
@@ -746,6 +805,8 @@ _JS = """
   // ---- hash router: one view at a time (Mnemosyne-console style)
   var VIEWS = ['overview', 'teams', 'runs', 'create', 'memory', 'profiles', 'cron'];
   function show(name) {
+    var runSel = null;
+    if (name.indexOf('runs:') === 0) { runSel = decodeURIComponent(name.slice(5)); name = 'runs'; }
     if (VIEWS.indexOf(name) < 0) name = 'overview';
     document.querySelectorAll('.view').forEach(function (v) { v.classList.remove('on'); });
     var el = document.getElementById('view-' + name);
@@ -753,6 +814,7 @@ _JS = """
     document.querySelectorAll('.rail .nav a').forEach(function (a) {
       a.classList.toggle('on', a.getAttribute('href') === '#/' + name);
     });
+    if (runSel && window.__teamopsSelectRun) window.__teamopsSelectRun(runSel);
   }
   window.addEventListener('hashchange', function () {
     show((location.hash || '#/overview').replace('#/', ''));
@@ -901,11 +963,13 @@ _JS = """
   show((location.hash || '#/overview').replace('#/', ''));
   selectTeam();
 
-  // live server mode: re-fetch every 2 minutes so the page never goes stale
+  // live server mode: re-fetch every 60s so the page never goes stale, and
+  // keep the current view (hash) across the reload — a refresh must not kick
+  // you back to Overview.
   if (location.protocol.indexOf('http') === 0) {
     setTimeout(function () {
-      location.href = location.pathname + '?t=' + Date.now();
-    }, 120000);
+      location.href = location.pathname + '?t=' + Date.now() + location.hash;
+    }, 60000);
   }
 })();
 """
@@ -1278,7 +1342,40 @@ def collect(home: Path, team_filter: str | None = None) -> dict:
         data["runs"] = [runs.graph_of(r) for r in runs.recent_runs(home, limit=20)]
     except Exception:  # noqa: BLE001
         data["runs"] = []
+    data["needs"] = _collect_needs(data)
     return data
+
+
+def _collect_needs(data: dict) -> list[dict]:
+    """Everything waiting on the human: HIGH cron flags + failed runs.
+
+    Each item: {kind, team, title, detail, jump, run_id?}. No timestamps are
+    fabricated — cron issues carry none, so the collapsed strip just names the
+    most severe item. Cap: the strip shows MAX_NEEDS and counts the rest.
+    """
+    needs: list[dict] = []
+    cron = data.get("cron") or {}
+    for issue in (cron.get("issues") or []):
+        if str(issue.get("severity", "")).upper() != "HIGH":
+            continue
+        job = str(issue.get("job") or "?")
+        scope = str(issue.get("scope") or "home")
+        detail = str(issue.get("detail") or "").split("\n")[0][:140]
+        needs.append({
+            "kind": "cron", "team": scope, "title": f"Cron: {job}",
+            "detail": detail or "needs a look", "jump": "cron",
+        })
+    for rec in (data.get("runs") or []):
+        counts = rec.get("counts") or {}
+        failed = int(counts.get("failed") or 0)
+        if str(rec.get("state")) == "failed" or failed > 0:
+            needs.append({
+                "kind": "run", "team": rec.get("team") or "",
+                "title": f"Run: {rec.get('title') or rec.get('id')}",
+                "detail": f"{failed} failed node(s)",
+                "jump": "runs", "run_id": rec.get("id"),
+            })
+    return needs
 
 
 def _run_count_text(rec: dict) -> str:
@@ -1345,6 +1442,38 @@ def _runs_view_html(runs: list[dict]) -> str:
     return '<div class="runs-layout">' + list_html + stage + "</div>"
 
 
+def _needs_html(needs: list[dict]) -> str:
+    """Pinned 'needs you' strip: count + newest item, expandable list."""
+    if not needs:
+        return ""
+    shown = needs[:6]
+    more = len(needs) - 6
+    rows = []
+    for it in shown:
+        run = it.get("run_id") or ""
+        rows.append(
+            f'<button class="needs-item" data-jump="{_esc(it.get("jump", "cron"))}" '
+            f'data-run="{_esc(run)}">'
+            f'<span class="ni-k">{_esc(it.get("kind", ""))}</span>'
+            f'<span class="ni-t">{_esc(it.get("title", ""))}</span>'
+            f'<span class="ni-d">{_esc(it.get("detail", ""))}</span></button>'
+        )
+    if more > 0:
+        rows.append(f'<div class="needs-more">+{more} more</div>')
+    first = needs[0]
+    n = len(needs)
+    line = (f'<b>{n} need you</b> · {_esc(first.get("title", ""))}'
+            f'{(" — " + _esc(first.get("detail", ""))) if first.get("detail") else ""}')
+    return (
+        '<div class="needs-w" id="needs-w">'
+        '<button class="needs-strip" id="needs-strip">'
+        '<span class="needs-ic"></span>'
+        f'<span class="needs-t">{line}</span>'
+        '<span class="needs-k">EXPAND</span></button>'
+        f'<div class="needs-list" id="needs-list">{"".join(rows)}</div></div>'
+    )
+
+
 def render_html(data: dict, title: str = "TeamOps Fleet Dashboard", build_id: str = "",
                 theme: dict | None = None) -> str:
     """Render the complete standalone HTML document (rail + tabbed views)."""
@@ -1366,6 +1495,7 @@ def render_html(data: dict, title: str = "TeamOps Fleet Dashboard", build_id: st
     run_records = data.get("runs") or []
     runs_html = _runs_view_html(run_records)
     runs_json = json.dumps(run_records, separators=(",", ":")).replace("</", "<\\/")
+    needs_html = _needs_html(data.get("needs") or [])
 
     # 24h buckets come from execution_stats' recent* counters; total/ok/failed
     # are all-time and shown as such in the profile table.
@@ -1680,7 +1810,7 @@ def render_html(data: dict, title: str = "TeamOps Fleet Dashboard", build_id: st
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{_esc(title)} — {home}</title>
-<style>{_CSS}{_RUN_CSS}</style>{f'<style id="teamops-theme">{theme_css}</style>' if theme_css else ''}
+<style>{_CSS}{_RUN_CSS}{_NEEDS_CSS}</style>{f'<style id="teamops-theme">{theme_css}</style>' if theme_css else ''}
 </head>
 <body>
 <aside class="rail">
@@ -1708,6 +1838,7 @@ def render_html(data: dict, title: str = "TeamOps Fleet Dashboard", build_id: st
   </div>
 </aside>
 <main class="main">
+{needs_html}
 
   <section class="view on" id="view-overview">
     <div class="pagehead">
@@ -1794,6 +1925,7 @@ def render_html(data: dict, title: str = "TeamOps Fleet Dashboard", build_id: st
 <script>window.__RUNS__ = {runs_json};</script>
 <script>{_JS}</script>
 <script>{_RUN_JS}</script>
+<script>{_NEEDS_JS}</script>
 </body>
 </html>
 """

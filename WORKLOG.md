@@ -176,3 +176,8 @@
 - [x] Tests: 173 GREEN (12 new: theme builtin/user/missing/unknown/light, render override, runs log parse done/fail/running/old, graph layers, canonical sorting, empty).
 - [x] Live-verified: demo run once GREEN end-to-end on temp home; server on :8891 → /health ok, Runs view renders demo DAGs, theme switch cyberpunk / nous-blue / unknown verified against rendered HTML.
 - [x] Video: 68s 1080p 16:9 demo (teamops-demo-16x9.mp4) from live temp-home shots (overview/teams/runs/create/cron + theme flips mono/cyberpunk/nous-blue) with burned captions + .srt + poster, built in the marketplace showreel format (captions only, ≤90s). Shot set in ~/demo-homes/teamops-demo-VRjS1K/plugin-data/teamops-dashboard/demo-shots/. Dashboard edge contrast bumped (visible on video), graph boxes size to panel width (single-column runs no longer clip).
+
+## 2026-11-10 ~15:30 — Needs-you strip (Task 2.14, Dalton-approved post-freeze build)
+- [x] **Needs-you strip** (B): pinned bar at top of every dashboard view — "N need you · <most severe item>" with EXPAND list. Sources: HIGH cron flags (Cron911) + runs with failed nodes (failed deploy/smoke = needs a human decision). Items jump to Cron health or select the exact run in the Runs view (`#/runs:<id>` router support). Collapsed line = notification badge, list = inbox. Clean home → no strip at all.
+- [x] **Live-sync fix**: auto-refresh now preserves the current hash (previously every 2-min reload kicked you back to Overview) and runs every 60s instead of 120s. Server mode was already live-per-request (each GET regenerates from current HERMES_HOME — verified when theme flips applied without restart).
+- [x] Tests 187 GREEN (3 new: strip present with failed run + cron flags, strip absent when clean, run-pick routing).
