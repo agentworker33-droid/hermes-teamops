@@ -19,7 +19,7 @@
 - [x] **#7 Docs match code**: README updated (template-only factory, no `verify.yaml` claim, 180→185 tests, review-fix status); `skills/teamops/SKILL.md` registered via `ctx.register_skill` (doctor now shows **16 tools + 1 hook**), content cleaned (no /tmp scratch-home, no `hermes-vault add`).
 - [x] Gates: `python3 -m pytest -q` → **185 passed**; `hermes plugins validate teamops --install-deps` → "Validation passed"; `hermes plugins doctor teamops/` → OK, **16 tools, 1 hook** (pre_tool_call declared in plugin.yaml provides_hooks).
 - [x] **Live E2E on TEMP home `/tmp/teamops-rv.*`** (never the live box): `teams list` (6 blueprints), `deploy sales` → **11/0 GREEN**, `verify` GREEN, factory `extend sales with billing-agent` → `sales-billing` blueprint deployed **13/0 GREEN** then rolled back **14/0 GREEN**, `rollback sales` → **12/0 GREEN**; factory writes land under the target home's `factory.blueprints_root` (verified no repo pollution; generated dirs removed from repo + temp home cleaned). **No live leaks** — 0 teamops-* profiles in the live home.
-- [x] Commit: TBD (pushed to origin).
+- [x] Commit: **cc35d3a** (pushed to origin).
 - [ ] Next: re-pin sha in PR #151675 to final commit + comment on PR with delta summary; D3 remaining = form submission (FwJLvOln) with PR + video links.
 
 ## 2026-11-10 12:00 — NOON shift (Task 2.12 Twilio phone intake — DONE)
