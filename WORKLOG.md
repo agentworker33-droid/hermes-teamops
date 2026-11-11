@@ -4,9 +4,17 @@
 > Order: D0 scaffold → D1 Build module → D2 Watch/Fix/Grow → D3 ship.
 
 ## Status
-- Phase: **D3 SHIP DAY (Nov 11) — build work all landed: catalog review fixes (cc35d3a), Runs view + theme bridging (3250715), needs-you strip (4e63f02); 187 tests + validate + doctor (16 tools, 1 hook) green; factory is template-only; owner actions gated by pre_tool_call approve hook; blueprint paths confined; path args removed from schemas. Demo video shot (68s, teamops-demo-16x9.mp4).**
-- Next task: D3 ship — re-pin plugin-catalog sha in PR #151675 to final HEAD (4e63f02) + comment with delta summary, then submit form (FwJLvOln) with PR + video links by Nov 11 5PM EST
+- Phase: **D3 SHIP DAY (Nov 11) — build work all landed and shipped: catalog PR #151675 pinned to 39a0858 (== HEAD == origin/main), delta comment posted 07:22Z; X demo post LIVE (x.com/automatedagent/status/2120350867719098523, 68s video attached, no @NousResearch tag); 187 tests + validate + doctor (16 tools, 1 hook) green.**
+- Next task: D3 form (FwJLvOln) — **BLOCKED on Dalton's Discord username** (required field; not stored on this box). Everything else ready: title/description/email/X link/PR link prepared in WORKLOG 08:00 entry. Also recommended: add @NousResearch tag to the demo post for full rule compliance.
 - Deadline: **Nov 11 2026 5PM EST**
+
+## 2026-11-11 08:00 — MORNING shift (D3 verification + form prep — BLOCKED on Discord handle)
+- [x] **Repo/gates**: clean at `39a0858` == origin/main (ls-remote verified); `python3 -m pytest -q` → **187 passed**; no code changes needed (build work all landed).
+- [x] **PR #151675 verified done (was already re-pinned overnight)**: `plugin-catalog/hermes-teamops.yaml` on branch `add-hermes-teamops` pins **39a0858** (== local HEAD == origin/main, reachable); our delta-summary comment is on the PR (07:22Z, "Ready for re-review" — points 1-7 + doc-sync gaps closed). Teknium1's CHANGES_REQUESTED is from the OLD 538ff250 review — awaiting re-review. No action needed from us until maintainer responds.
+- [x] **X demo post VERIFIED LIVE** (made ~22:00 EST Nov 10): https://x.com/automatedagent/status/2120350867719098523 — text "Hackathon entry: TeamOps — … 68s demo 👇", **video attached** (68.023s, 1920x1080 mp4 via fxtwitter API), poster + srt local at demo-homes/teamops-demo-VRjS1K/…/demo-shots/. GAP: no @NousResearch tag and no PR link in the tweet — official rule says to tag @NousResearch; recommend a follow-up comment or edit.
+- [x] **Form FwJLvOln inspected live** (firecrawl browser): 6 required fields — Plugin Title, Plugin Description, Email Address, Discord Username, X Demo Post Link, GitHub PR link. Prepared values: Title "TeamOps — build and run your agent team"; Description = catalog description (16 tools + CLI, template-only factory, disclosure line); Email **wyantdalton@gmail.com**; X link = status above; PR link = https://github.com/NousResearch/hermes-agent/pull/151675. **BLOCKER: Discord Username not found** — grepped profile memories, boss profile, omh, configs, sessions, Obsidian vault, ~/.config/Hermes, vault; nothing stored. NOT submitting with a fabricated handle (would misattribute the entry / risk disqualification).
+- [x] How to unblock: Dalton replies with his Discord username (can be the same handle style as anything; must be exact) → next cron shift fills form via firecrawl browser (session works) and submits by 5PM EST.
+- [x] Playwright greenlet broken (posting infra down) — irrelevant for form (firecrawl browser works); relevant only if we need to add the @NousResearch comment — that is a public post, needs Dalton's explicit OK per approval policy.
 
 ## 2026-11-11 02:00 — OVERNIGHT sweep (drift fix, GREEN)
 - [x] Gates: `python3 -m pytest -q` → **187 passed**; `hermes plugins doctor teamops/` → OK, **16 tools, 1 hook**; git clean at HEAD 4e63f02 (matches origin/main).
