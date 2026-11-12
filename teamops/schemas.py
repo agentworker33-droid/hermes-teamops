@@ -205,7 +205,7 @@ _SCHEMA = {
         "toolset": "teamops",
         "schema": {
             "name": "phone_intake",
-            "description": "Twilio phone intake handler: inbound SMS/call payload -> structured triage card file. OPTIONAL feature, mock-first; live requires the RUNNING USER's own Twilio env (TWILIO_ACCOUNT_SID/AUTH_TOKEN/PHONE_NUMBER). Without creds, live is a clean 'disabled' refusal; mock=true always runs the pipeline.",
+            "description": "Twilio phone intake handler: inbound SMS/call payload -> structured triage card file. OPTIONAL feature, mock-first; live requires the RUNNING USER's own Twilio env via Hermes' secret scope (TWILIO_ACCOUNT_SID/AUTH_TOKEN/PHONE_NUMBER, declared optional_env). Without creds, live is a clean 'disabled' refusal; mock=true always runs the pipeline.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -226,7 +226,7 @@ _SCHEMA = {
         "toolset": "teamops",
         "schema": {
             "name": "twilio_status",
-            "description": "Is Twilio intake configured? (reads the RUNNING USER's env / <home>/config/twilio.env; outputs masked values only — zero nags when disabled).",
+            "description": "Is Twilio intake configured? (reads the RUNNING USER's env via Hermes' secret scope — declared optional_env; outputs masked values only — zero nags when disabled).",
             "parameters": {"type": "object", "properties": {}},
         },
     },

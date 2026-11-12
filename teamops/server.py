@@ -285,11 +285,11 @@ def serve(home: Path, port: int = DEFAULT_PORT, open_browser: bool = False) -> T
     Handler.token = secrets.token_hex(32)
     tk = tokenfile(home)
     tk.parent.mkdir(parents=True, exist_ok=True)
-    tk.write_text(Handler.token)
-    try:
-        os.chmod(tk, 0o600)  # owner-only: contains a live action token
-    except OSError:  # pragma: no cover — chmod is best-effort on exotic fs
-        pass
+    # Already private from birth (review round 3, recommended): os.open with
+    # 0o600 avoids the write-then-chmod window entirely.
+    fd = os.open(tk, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(Handler.token)
     httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     pf = pidfile(home)
     pf.write_text(str(os.getpid()))

@@ -62,11 +62,23 @@ def test_schemas_do_not_expose_path_args():
 
 
 @pytest.fixture()
-def hermetic_args(tmp_path, monkeypatch):
+def hermetic_home(tmp_path) -> str:
+    """A scratch HERMES_HOME that no test may leak writes into the live box."""
+    home = tmp_path / "home"
+    home.mkdir(parents=True, exist_ok=True)
+    return str(home)
+
+
+@pytest.fixture()
+def hermetic_args(hermetic_home, monkeypatch):
     """A sample args dict per tool that never touches the live home and never
-    spawns a real dashboard server."""
-    (tmp_path / "home").mkdir(parents=True, exist_ok=True)
-    # stub the dashboard server module so the dict-call test cannot spawn a daemon
+    spawns a real dashboard server.
+
+    CLI-only keys (home, out_path, path, jobs_path, db_path, verify...) are
+    intentionally NOT in these dicts: reviewer round 3 #1 established that the
+    model's args dict may only carry schema keys — the CLI/tests pass the
+    rest through kwargs.
+    """
     import teamops.server as server_mod
     monkeypatch.setattr(server_mod, "running", lambda home: None)
     monkeypatch.setattr(server_mod, "start_daemon",
@@ -74,51 +86,58 @@ def hermetic_args(tmp_path, monkeypatch):
     monkeypatch.setattr(server_mod, "status", lambda home: {"running": False})
     monkeypatch.setattr(server_mod, "stop", lambda home: {"running": False})
     return {
-        "home": str(tmp_path / "home"),
         "blueprint_list": {},
-        "team_deploy": {"name": "sales", "dry_run": True, "home": str(tmp_path / "home")},
-        "team_verify": {"name": "sales", "home": str(tmp_path / "home")},
-        "team_rollback": {"name": "sales", "home": str(tmp_path / "home")},
-        "team_factory": {"spec": "add a billing agent to sales", "use_fixture": True,
-                         "home": str(tmp_path / "home")},
-        "team_status": {"home": str(tmp_path / "home")},
-        "cron_scan": {"home": str(tmp_path / "home")},
-        "model_scan": {"home": str(tmp_path / "home")},
-        "model_rollback": {"home": str(tmp_path / "home")},
-        "team_standup": {"hours": 24, "home": str(tmp_path / "home")},
-        "mesh_sync": {"message": "hello", "home": str(tmp_path / "home")},
-        "team_dashboard": {"port": 8799, "open_browser": False,
-                           "home": str(tmp_path / "home")},
-        "team_dashboard_status": {"home": str(tmp_path / "home")},
-        "team_dashboard_stop": {"home": str(tmp_path / "home")},
-        "phone_intake": {"mock": True, "home": str(tmp_path / "home")},
-        "twilio_status": {"home": str(tmp_path / "home")},
+        "team_deploy": {"name": "sales", "dry_run": True},
+        "team_verify": {"name": "sales"},
+        "team_rollback": {"name": "sales"},
+        "team_factory": {"spec": "add a billing agent to sales", "use_fixture": True},
+        "team_status": {},
+        "cron_scan": {},
+        "model_scan": {},
+        "model_rollback": {},
+        "team_standup": {"hours": 24},
+        "mesh_sync": {"message": "hello"},
+        "team_dashboard": {"port": 8799, "open_browser": False},
+        "team_dashboard_status": {},
+        "team_dashboard_stop": {},
+        "phone_intake": {"mock": True},
+        "twilio_status": {},
     }
 
 
-def test_handlers_accept_hermes_dict_call(hermetic_args):
+def _hermetic_kwargs(name: str, home: str) -> dict:
+    """The kwargs the CLI would pass (CLI-only keys), per tool."""
+    if name == "cron_scan":
+        return {"jobs_path": home}
+    return {"home": home}
+
+
+def test_handlers_accept_hermes_dict_call(hermetic_args, hermetic_home):
     """Review #1: every handler works the way Hermes calls it —
-    handler({"name": "sales"}) and returns JSON."""
+    handler({"name": "sales"}) and returns JSON. CLI-only keys travel as
+    kwargs (review round 3 #1)."""
     for name in schemas.SCHEMAS:
         handler = getattr(tools, name)
-        out = handler(hermetic_args.get(name, {}))
+        out = handler(hermetic_args.get(name, {}),
+                      **_hermetic_kwargs(name, hermetic_home))
         assert isinstance(out, str), name
         parsed = json.loads(out)
         assert "success" in parsed, name
 
 
-def test_owner_actions_refused_in_cron_worker(hermetic_args, monkeypatch):
+def test_owner_actions_refused_in_cron_worker(hermetic_args, hermetic_home, monkeypatch):
     """Review #4: team_deploy / team_rollback / factory-deploy refuse inside a
     cron worker process (no human to approve)."""
     monkeypatch.setenv("_HERMES_CRON_EXTERNAL_WORKER", "exec-123")
-    out = json.loads(tools.team_deploy(hermetic_args["team_deploy"]))
+    out = json.loads(tools.team_deploy(hermetic_args["team_deploy"], home=hermetic_home))
     assert out["success"] is False and "OWNER ACTION" in out["error"]
-    out = json.loads(tools.team_rollback(hermetic_args["team_rollback"]))
+    out = json.loads(tools.team_rollback(hermetic_args["team_rollback"], home=hermetic_home))
     assert out["success"] is False and "OWNER ACTION" in out["error"]
-    out = json.loads(tools.team_factory({**hermetic_args["team_factory"], "deploy": True}))
+    out = json.loads(tools.team_factory({**hermetic_args["team_factory"], "deploy": True},
+                                        home=hermetic_home))
     assert out["success"] is False and "OWNER ACTION" in out["error"]
     # plain generation (no deploy) still works
-    out = json.loads(tools.team_factory(hermetic_args["team_factory"]))
+    out = json.loads(tools.team_factory(hermetic_args["team_factory"], home=hermetic_home))
     assert out["success"] is True
 
 
@@ -158,33 +177,86 @@ def test_pre_tool_call_hook_round2_expansion():
     assert d and d["action"] == "approve" and d["rule_key"] == "teamops.model_rollback"
 
 
-def test_owner_actions_round2_refused_in_cron_worker(hermetic_args, monkeypatch):
+def test_owner_actions_round2_refused_in_cron_worker(hermetic_args, hermetic_home, monkeypatch):
     """Round 2 #2: the newly gated tools carry the same cron-worker refusal as
     team_deploy; read-only/locally-safe variants keep working."""
     monkeypatch.setenv("_HERMES_CRON_EXTERNAL_WORKER", "exec-123")
     # remote verify refused
-    out = json.loads(tools.team_verify({**hermetic_args["team_verify"], "host": "user@vps"}))
+    out = json.loads(tools.team_verify({**hermetic_args["team_verify"], "host": "user@vps"},
+                                       home=hermetic_home))
     assert out["success"] is False and "OWNER ACTION" in out["error"]
     # local verify stays read-only and works
-    out = json.loads(tools.team_verify(hermetic_args["team_verify"]))
+    out = json.loads(tools.team_verify(hermetic_args["team_verify"], home=hermetic_home))
     assert out["success"] is True
     # swap-apply refused
     out = json.loads(tools.model_scan({**hermetic_args["model_scan"],
-                                       "swap": True, "dry_run": False}))
+                                       "swap": True, "dry_run": False},
+                                      home=hermetic_home))
     assert out["success"] is False and "OWNER ACTION" in out["error"]
     # detect-only still works
-    out = json.loads(tools.model_scan(hermetic_args["model_scan"]))
+    out = json.loads(tools.model_scan(hermetic_args["model_scan"], home=hermetic_home))
     assert out["success"] is True
     # model_rollback refused
-    out = json.loads(tools.model_rollback(hermetic_args["model_rollback"]))
+    out = json.loads(tools.model_rollback(hermetic_args["model_rollback"], home=hermetic_home))
     assert out["success"] is False and "OWNER ACTION" in out["error"]
 
 
-def test_params_drops_model_supplied_path_keys():
-    """Round 2 #4: model args are filtered to schema keys — CLI-only path keys
-    sent by the model are dropped; CLI kwargs still merge."""
+def test_params_schema_keys_from_args_cli_only_from_kwargs():
+    """Review round 2 #4 + round 3 #1: schema keys come from args (the model's
+    dict); CLI-only path keys (home, path, out_path, prefix, jobs_path,
+    db_path, verify...) are accepted ONLY through kwargs."""
     merged = tools._params({"name": "sales", "home": "/etc",
-                            "path": "/tmp/x", "evil": 1}, {}, {"name"})
+                            "path": "/tmp/x", "evil": 1}, {},
+                           {"name", "dry_run"}, {"home", "verify"})
     assert merged == {"name": "sales"}
-    merged = tools._params({"name": "sales"}, {"home": "/tmp/h"}, {"name", "home"})
-    assert merged == {"name": "sales", "home": "/tmp/h"}
+    merged = tools._params({"name": "sales"}, {"home": "/tmp/h", "verify": False},
+                           {"name"}, {"home", "verify"})
+    assert merged == {"name": "sales", "home": "/tmp/h", "verify": False}
+
+
+def test_round3_cli_only_keys_ignored_from_model_args(tmp_path, monkeypatch):
+    """Review round 3 #1 (blocking): the real handlers drop CLI-only keys that
+    arrive inside the model's args dict, so unapproved tools cannot overwrite
+    arbitrary files or scan arbitrary paths."""
+    home = tmp_path / "home"
+    home.mkdir(parents=True, exist_ok=True)
+    # team_status: out_path in args must be ignored → the dashboard lands at
+    # the plugin's default path under the resolved home, never at the model's
+    # arbitrary path
+    out = json.loads(tools.team_status({"html": True,
+                                        "out_path": str(tmp_path / "evil.html")},
+                                       home=str(home)))
+    assert out["success"] is True
+    assert out["html_path"] != str(tmp_path / "evil.html")
+    assert not (tmp_path / "evil.html").exists()
+    assert "teamops-dashboard.html" in out["html_path"]
+    # blueprint_list: path in args must be ignored → bundled blueprints listed
+    out = json.loads(tools.blueprint_list({"path": str(tmp_path)}))
+    assert out["success"] is True
+    assert out["count"] >= 6
+    # cron_scan: jobs_path/db_path in args must be ignored (plugin resolves
+    # its own default home; read-only scan of an empty dir still returns a
+    # report, proving the keys did not redirect the scan)
+    monkeypatch.setattr(tools, "default_home", lambda: home)
+    out = json.loads(tools.cron_scan({"jobs_path": str(tmp_path),
+                                      "db_path": "/etc/passwd"}))
+    assert out["success"] is True
+    assert isinstance(out.get("issues"), list)
+    # mesh_sync: home in args must be ignored (default_home monkeypatched to
+    # tmp so no live write can happen) — the message itself still goes through
+    out = json.loads(tools.mesh_sync({"message": "round3-key-drop",
+                                      "home": "/etc"}))
+    assert out["success"] is True
+
+
+def test_round3_cli_only_keys_still_work_as_kwargs(tmp_path):
+    """Review round 3 #1: the CLI/tests pass CLI-only keys as kwargs and they
+    land exactly where the caller asked (team_status out_path via kwargs)."""
+    home = tmp_path / "home"
+    home.mkdir(parents=True, exist_ok=True)
+    target = tmp_path / "custom-dashboard.html"
+    out = json.loads(tools.team_status({"html": True}, home=str(home),
+                                       out_path=str(target)))
+    assert out["success"] is True
+    assert out["html_path"] == str(target)
+    assert target.exists()

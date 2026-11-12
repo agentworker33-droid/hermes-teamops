@@ -15,8 +15,23 @@ CLI: `hermes teams <command>`. Tool surface mirrors it: `blueprint_list`, `team_
 Plan: `~/.hermes/plans/2026-11-08_0450-hermes-teamops-plugin.md`
 Build worklog: `WORKLOG.md` (cron shifts append here after every task).
 
-Status: **catalog review round 2 fixes landed (Nov 11 evening)** — PR #151675
-re-review points 1-9: vps remote commands fully shlex.quote()d + blueprint
+Status: **catalog review round 3 fixes landed (Nov 12 morning)** — PR #151675
+re-review points (reviewing `5e60e79`): the model can no longer pass CLI-only
+path keys in its args dict at all — schema keys are read from `args` only and
+`home`/`path`/`out_path`/`prefix`/`jobs_path`/`db_path`/`verify` are accepted
+exclusively through `**kwargs` (the CLI / tests / remote driver), so
+`team_status({"html": true, "out_path": …})`, `blueprint_list({"path": …})`,
+`cron_scan({"db_path": …})` and `mesh_sync({"home": …})` are inert from the
+model; Twilio creds now read ONLY through `agent.secret_scope.get_secret`
+(the profile scope's own env fallback — no bare `os.environ` override, so one
+launch profile's creds can never leak into another profile's plugin call);
+all 10 trading SOULs carry a PAPER-ONLY MANDATE banner and the executor /
+yield-farmer / boss / satellites / portfolio-manager lines that said place
+trades / return fills / execute rebalances now say simulate in the paper
+ledger, never place real orders or move funds. Dashboard token file is
+created 0o600 from birth. **209 tests.**
+Round-2 fixes (Nov 11 evening, all 9 points): vps remote commands fully
+shlex.quote()d + blueprint
 names validated `^[a-z0-9-]{1,64}$` + hosts starting with `-` refused + `--`
 before the ssh host; `team_verify --host`, `model_scan` swap-apply and
 `model_rollback` promoted to owner actions (approval + cron refusal);
@@ -28,7 +43,7 @@ containment on the bare-name branch; factory default root moved to
 `<home>/plugin-data/teamops/blueprints/` and bundled blueprint names are
 refused; Twilio creds read via `agent.secret_scope` (declared `optional_env`,
 no `twilio.env`); trading blueprint is analysis/paper-only; remote driver
-calls handlers with dict args; docs match all of it. **206 tests.**
+calls handlers with dict args; docs match all of it.
 Round-1 fixes (Nov 10 evening, all 7 points): Hermes dict-args tool
 contract + OpenAI-shape schemas; PyYAML declared in `python_dependencies`;
 Agent Factory is template-only (no home-dir script runner); deploy/rollback/
@@ -75,7 +90,7 @@ hermes teams rollback sales --host root@vps.example.com      # remote rollback
                                   #  a custom HERMES_HOME on the host. No creds stored/shipped.)
 hermes teams status               # fleet panel: profiles, memory %, crons, mesh
 hermes teams status --html        # self-contained dashboard (opens in browser; --no-open to write only)
-hermes teams dashboard            # LIVE dashboard server (fresh data per request; daemon + /health)
+hermes teams dashboard            # LIVE dashboard server on port 8781 (fresh data per request; daemon + /health)
 hermes teams dashboard-status     # is the live server running?
 hermes teams dashboard-stop       # stop it
 hermes teams cron-scan            # Cron911: silent gaps + failures + dead models
@@ -84,6 +99,8 @@ hermes teams model-scan --swap --pool deepseek/deepseek-v4-flash-0731,nous/herme
                                   # OPT-IN auto-swap: dry-run plan only (add --apply to write;
                                   # every swap is changelogged + revertible)
 hermes teams model-rollback       # undo the most recent swap (--all for everything)
+                                  # NOTE: --apply/rollback rewrites every profile's config.yaml /
+                                  # jobs.json (not just one) — every write is changelogged + revertible
 hermes teams standup              # last-24h digest + open kanban
 hermes teams sync "use paper trading only" --author dalton   # MESH-MAP.md broadcast
 hermes teams phone-intake --mock --channel sms --body "The hvac is broken"   # Twilio intake (OPTIONAL, mock-first)
@@ -97,6 +114,9 @@ hermes teams rollback sales       # undo the deploy
 # stores or ships them (declared optional_env in plugin.yaml):
 #   export TWILIO_ACCOUNT_SID=... TWILIO_AUTH_TOKEN=... TWILIO_PHONE_NUMBER=...
 #   # or provide them via Hermes secret storage (agent.secret_scope.get_secret)
+# Creds are read ONLY through the secret scope; when no profile is bound the
+# scope falls back to the running user's env itself — a multi-profile Hermes
+# process can never leak one launch profile's Twilio creds into another.
 # The pipeline: webhook payload → (transcribe) → intent triage → structured
 # card → agent follow-up ledger at <home>/plugin-data/teamops/intake/.
 # Without creds: phone-intake returns a clean 'disabled' refusal, mock=True
@@ -140,8 +160,8 @@ the pre-baked demo output of the Agent Factory (`use_fixture=true`).
 | `factory.py` | Agent Factory (template-only generator: extend a base blueprint with a role, or scaffold a team; fixture fallback for demos). Writes under `<home>/plugin-data/teamops/blueprints/` (or config `factory.blueprints_root`); bundled blueprint names are refused |
 | `fleet.py` | fleet reads: profiles, jobs.json, executions.db, memory %, mesh; team grouping + ephemeral-team inventory |
 | `dashboard.py` | self-contained HTML dashboard (fleet panel, cron health, interactive SVG mesh graph; no CDN) |
-| `server.py` | LIVE dashboard server: fresh HTML per request, /health, daemonize, stop (mnemosyne-dashboard pattern). Loopback-only + Host check, NO CORS, per-start 0600 token gates `/api/action`; `last_run` confined to `<home>/teams/<team>/`; `run_script` spawns with a minimal PATH/HOME/LANG env; deploy action disabled (CLI approval only) |
-| `twilio_intake.py` | OPTIONAL Twilio phone intake: webhook payload → transcribe → intent triage → structured card → agent follow-up ledger; creds read through Hermes secret scope (`agent.secret_scope.get_secret`) / your env (declared `optional_env`, never stored/shipped), mock-first, no-creds → clean disable |
+| `server.py` | LIVE dashboard server: fresh HTML per request, /health, daemonize, stop (mnemosyne-dashboard pattern). Loopback-only + Host check, NO CORS, per-start token (created 0o600 from birth via os.open) gates `/api/action`; `last_run` confined to `<home>/teams/<team>/`; `run_script` spawns with a minimal PATH/HOME/LANG env; deploy action disabled (CLI approval only) |
+| `twilio_intake.py` | OPTIONAL Twilio phone intake: webhook payload → transcribe → intent triage → structured card → agent follow-up ledger; creds read ONLY through Hermes secret scope (`agent.secret_scope.get_secret`, declared `optional_env`, never stored/shipped) — the scope's own env fallback covers unbound profiles, no bare `os.environ` read; mock-first, no-creds → clean disable |
 | `cron911.py` | silent-gap + failure + dead-model detection (detect-only; multi-rule rows merged) |
 | `modelguard.py` | dead-model detect + recommend; OPT-IN swap to a user-configured fallback pool (config `modelguard.fallback_pool`), changelog + rollback |
 | `standup.py` | last-24h digest generator |
@@ -154,7 +174,7 @@ the pre-baked demo output of the Agent Factory (`use_fixture=true`).
 python3 -m pytest -q
 ```
 
-206 tests: blueprint loader (+ structural integrity for all 6 baked blueprints:
+209 tests: blueprint loader (+ structural integrity for all 6 baked blueprints:
 roles→souls, cron→role references, unique prefixed cron names, mesh→role edges,
 kanban assignees, trading paper-only flag), Deploy Guard (mocked hermes;
 rollback scope confinement; cron.allow_agent_scheduling honouring), factory
@@ -171,7 +191,10 @@ full mock pipeline + ledger, live-blocked-without-creds refusal, tool + CLI
 wiring, plus a manifest-coherence test pinning plugin.yaml ⇄ schemas ⇄ handlers,
 the Hermes dict-args handler contract (handler({"name": "sales"})), model-swap
 pool/rollback tests, and the round-2 approval-hook matrix
-(team_verify --host / model_scan swap-apply / model_rollback).
+(team_verify --host / model_scan swap-apply / model_rollback), plus the
+round-3 key-confinement tests (real handlers ignore CLI-only keys inside the
+model's args dict; kwargs still land exactly where the CLI asks) and the
+secret-scope-wins-over-process-env Twilio test.
 
 ## Cut list (NOT in v1)
 

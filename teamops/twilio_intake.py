@@ -78,34 +78,36 @@ def _secret_scope_get(name: str) -> str | None:
 
 def load_config(home: str | Path | None = None,
                 environ: dict | None = None) -> dict:
-    """Read Twilio creds from Hermes secret scope / the running user's env.
+    """Read Twilio creds through Hermes' secret scope ONLY.
 
-    Review round 2 #6: the ``<home>/config/twilio.env`` dotenv read is gone —
-    the plugin declares ``optional_env`` in plugin.yaml and reads each name
-    through ``agent.secret_scope.get_secret`` (which itself wraps the profile
-    scope + process env), with an explicit ``environ`` override for tests.
+    Review round 2 #6 + round 3 #2: the ``<home>/config/twilio.env`` dotenv
+    read is gone AND the bare process-env override is gone. Every name is
+    read only through ``agent.secret_scope.get_secret`` — which itself falls
+    back to the running user's env when NO profile is bound — so a
+    multi-profile Hermes process can never swap one launch profile's Twilio
+    credentials into another profile's plugin call. ``environ`` remains ONLY
+    as an explicit test/dev injection point (mirrors what the runtime would
+    return); nothing is written or cached — the plugin never stores
+    credentials.
 
     Returns a dict with internal (unmasked) values plus `present`/`reason`.
-    Nothing is written or cached — the plugin never stores credentials.
     """
     env = dict(environ) if environ is not None else None
     vals: dict[str, str] = {}
     for name in ENV_NAMES:
-        scoped = _secret_scope_get(name)
-        if scoped:
-            vals[name] = scoped
-    source_env = env if env is not None else os.environ
-    for name in ENV_NAMES:  # explicit environ / process env still wins
-        if name in source_env and source_env[name]:
-            vals[name] = source_env[name]
-    sid = vals.get(ENV_SID, "").strip()
-    auth = vals.get(ENV_AUTH, "").strip()
-    phone = vals.get(ENV_PHONE, "").strip()
+        if env is not None:
+            if env.get(name):
+                vals[name] = env[name].strip()
+        else:
+            scoped = _secret_scope_get(name)
+            if scoped:
+                vals[name] = scoped.strip()
+    sid = vals.get(ENV_SID, "")
+    auth = vals.get(ENV_AUTH, "")
+    phone = vals.get(ENV_PHONE, "")
     missing = [n for n, v in ((ENV_SID, sid), (ENV_AUTH, auth), (ENV_PHONE, phone)) if not v]
     present = not missing
-    source = "env"
-    if present and ENV_SID not in source_env:
-        source = "secret_scope"
+    source = "env" if env is not None else "secret_scope"
     reason = ""
     if missing:
         reason = (
@@ -246,8 +248,10 @@ def handle_inbound(data: dict | None, home: str | Path | None = None,
         return {
             "success": False, "mode": "disabled", "enabled": False,
             "error": cfg["reason"],
-            "hint": "run with mock=True for a demo, or export the Twilio "
-                    "env vars / write <home>/config/twilio.env",
+            "hint": "run with mock=True for a demo, or provide the Twilio "
+                    f"{ENV_SID}/{ENV_AUTH}/{ENV_PHONE} values via Hermes secret "
+                    "storage (agent.secret_scope.get_secret) or the running "
+                    "user's environment",
         }
     inb = parse_payload(data)
     transcript = transcript or (data or {}).get("transcript") or None

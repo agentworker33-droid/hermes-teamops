@@ -136,7 +136,7 @@ def register_cli(subparser):
     p.add_argument("--home", default=None, help="Target HERMES_HOME")
     p.set_defaults(func=_cmd_phone_intake)
 
-    p = sub.add_parser("twilio-status", help="Is Twilio intake configured? (reads YOUR env / <home>/config/twilio.env; masked output)")
+    p = sub.add_parser("twilio-status", help="Is Twilio intake configured? (reads YOUR env via Hermes' secret scope; masked output)")
     p.add_argument("--home", default=None, help="Target HERMES_HOME")
     p.set_defaults(func=_cmd_twilio_status)
 
@@ -168,15 +168,14 @@ def _print(data) -> int:
 
 
 def _cmd_list(args) -> int:
-    return _print(tools.blueprint_list({"path": args.path}))
+    return _print(tools.blueprint_list({}, path=args.path))
 
 
 def _cmd_deploy(args) -> int:
     r = json.loads(tools.team_deploy({
         "name": args.name, "prefix": args.prefix, "dry_run": args.dry_run,
-        "home": args.home, "verify": not args.no_verify,
         "host": args.host, "ssh_key": args.ssh_key, "remote_home": args.remote_home,
-    }))
+    }, home=args.home, verify=not args.no_verify))
     if "verify" in r:
         r["checks"] = (r.get("verify") or {}).get("checks", [])
         r["team"] = args.name
@@ -185,18 +184,18 @@ def _cmd_deploy(args) -> int:
 
 def _cmd_verify(args) -> int:
     r = json.loads(tools.team_verify({
-        "name": args.name, "home": args.home,
+        "name": args.name,
         "host": args.host, "ssh_key": args.ssh_key, "remote_home": args.remote_home,
-    }))
+    }, home=args.home))
     r["team"] = args.name
     return _print(r)
 
 
 def _cmd_rollback(args) -> int:
     r = json.loads(tools.team_rollback({
-        "name": args.name, "home": args.home,
+        "name": args.name,
         "host": args.host, "ssh_key": args.ssh_key, "remote_home": args.remote_home,
-    }))
+    }, home=args.home))
     r["team"] = args.name
     return _print(r)
 
@@ -204,46 +203,47 @@ def _cmd_rollback(args) -> int:
 def _cmd_factory(args) -> int:
     return _print(tools.team_factory({
         "spec": args.spec, "base": args.base, "name": args.name,
-        "use_fixture": args.use_fixture, "deploy": args.deploy, "home": args.home,
-    }))
+        "use_fixture": args.use_fixture, "deploy": args.deploy,
+    }, home=args.home))
 
 
 def _cmd_status(args) -> int:
     if args.html is not None:
         out_path = None if args.html == "default" else args.html
         r = json.loads(tools.team_status({
-            "team": args.team, "home": args.home, "html": True, "out_path": out_path,
-        }))
+            "team": args.team, "html": True,
+        }, home=args.home, out_path=out_path))
         if r.get("success") and not args.no_open:
             import webbrowser
             webbrowser.open(r.get("html_path", ""))
         return _print(r)
-    return _print(tools.team_status({"team": args.team, "home": args.home}))
+    return _print(tools.team_status({"team": args.team}, home=args.home))
 
 
 def _cmd_cron_scan(args) -> int:
-    return _print(tools.cron_scan({"jobs_path": args.home}))
+    return _print(tools.cron_scan({}, jobs_path=args.home))
 
 
 def _cmd_model_scan(args) -> int:
     pool = [m.strip() for m in args.pool.split(",") if m.strip()] if args.pool else None
     return _print(tools.model_scan({
-        "home": args.home, "swap": args.swap, "pool": pool, "dry_run": not args.apply,
-    }))
+        "swap": args.swap, "pool": pool, "dry_run": not args.apply,
+    }, home=args.home))
 
 
 def _cmd_model_rollback(args) -> int:
-    return _print(tools.model_rollback({"home": args.home, "all_swaps": args.all}))
+    return _print(tools.model_rollback({"all_swaps": args.all}, home=args.home))
 
 
 def _cmd_standup(args) -> int:
-    return _print(tools.team_standup({"team": args.team, "hours": args.hours, "home": args.home}))
+    return _print(tools.team_standup({"team": args.team, "hours": args.hours},
+                                     home=args.home))
 
 
 def _cmd_sync(args) -> int:
     return _print(tools.mesh_sync({
-        "message": args.message, "author": args.author, "team": args.team, "home": args.home,
-    }))
+        "message": args.message, "author": args.author, "team": args.team,
+    }, home=args.home))
 
 
 def _cmd_dashboard(args) -> int:
@@ -256,16 +256,16 @@ def _cmd_dashboard(args) -> int:
         server.serve(home, port=port, open_browser=not args.no_open).serve_forever()
         return 0
     return _print(tools.team_dashboard({
-        "home": args.home, "port": args.port, "open_browser": not args.no_open,
-    }))
+        "port": args.port, "open_browser": not args.no_open,
+    }, home=args.home))
 
 
 def _cmd_dashboard_status(args) -> int:
-    return _print(tools.team_dashboard_status({"home": args.home}))
+    return _print(tools.team_dashboard_status({}, home=args.home))
 
 
 def _cmd_dashboard_stop(args) -> int:
-    return _print(tools.team_dashboard_stop({"home": args.home}))
+    return _print(tools.team_dashboard_stop({}, home=args.home))
 
 
 def _cmd_phone_intake(args) -> int:
@@ -273,12 +273,12 @@ def _cmd_phone_intake(args) -> int:
         "channel": args.channel, "from_number": args.from_number,
         "to_number": args.to_number, "body": args.body, "transcript": args.transcript,
         "call_status": args.call_status, "mock": args.mock,
-        "persist": not args.no_persist, "home": args.home,
-    }))
+        "persist": not args.no_persist,
+    }, home=args.home))
 
 
 def _cmd_twilio_status(args) -> int:
-    return _print(tools.twilio_status({"home": args.home}))
+    return _print(tools.twilio_status({}, home=args.home))
 
 
 def teams_command(args):

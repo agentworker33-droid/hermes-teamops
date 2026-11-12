@@ -26,10 +26,16 @@ ENV_NAMES = (ti.ENV_SID, ti.ENV_AUTH, ti.ENV_PHONE)
 
 @pytest.fixture(autouse=True)
 def _no_twilio_env(monkeypatch):
-    """Tests must never see the host's real Twilio creds."""
+    """Tests must never see the host's real Twilio creds.
+
+    _secret_scope_get is emulated as the runtime's env fallback (what
+    agent.secret_scope.get_secret returns when NO profile is bound): it reads
+    the (cleaned) process env. Tests that exercise the scoped path override
+    the stub with their own values.
+    """
     for name in ENV_NAMES:
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr(ti, "_secret_scope_get", lambda name: None)
+    monkeypatch.setattr(ti, "_secret_scope_get", lambda name: os.environ.get(name))
 
 
 SCOPED = {ti.ENV_SID: "ACscoped", ti.ENV_AUTH: "tokscope", ti.ENV_PHONE: "+155****0000"}
@@ -66,11 +72,30 @@ def test_config_partial_creds(tmp_path):
     assert ti.ENV_AUTH in cfg["reason"] and ti.ENV_PHONE in cfg["reason"]
 
 
-def test_env_overrides_secret_scope(tmp_path, monkeypatch):
+def test_environ_injection_shadows_scope_only_for_tests(tmp_path, monkeypatch):
+    """Round 3 #2: the explicit ``environ`` param is a TEST-ONLY injection
+    point — production reads ONLY through _secret_scope_get (which already
+    falls back to env when no profile is bound). When injected, the full env
+    set is used (scope is not consulted) and the source is labeled 'env'."""
     monkeypatch.setattr(ti, "_secret_scope_get", lambda name: SCOPED.get(name))
-    cfg = ti.load_config(home=tmp_path, environ={ti.ENV_SID: "ACenv"})
+    cfg = ti.load_config(home=tmp_path,
+                         environ={ti.ENV_SID: "ACenv", ti.ENV_AUTH: "tokenv",
+                                  ti.ENV_PHONE: "+155****0000"})
     assert cfg["account_sid"] == "ACenv"
+    assert cfg["auth_token"] == "tokenv"
+    assert cfg["present"] is True
     assert cfg["source"] == "env"
+
+
+def test_secret_scope_wins_over_process_env_round3(tmp_path, monkeypatch):
+    """Round 3 #2: the process env NEVER overrides the scoped value — a
+    multi-profile Hermes process can't leak one launch profile's Twilio creds
+    into another profile's plugin call."""
+    monkeypatch.setenv(ti.ENV_SID, "AClaunchprofile")
+    monkeypatch.setattr(ti, "_secret_scope_get", lambda name: SCOPED.get(name))
+    cfg = ti.load_config(home=tmp_path)
+    assert cfg["account_sid"] == "ACscoped"
+    assert cfg["source"] == "secret_scope"
 
 
 def test_status_masks_secrets(tmp_path, monkeypatch):

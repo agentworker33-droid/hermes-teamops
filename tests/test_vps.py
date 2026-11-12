@@ -295,7 +295,8 @@ def test_tools_team_verify_and_rollback_host(fake_runner):
 
 def test_tools_team_deploy_no_host_still_local(tmp_path):
     """Without --host nothing about vps runs — local path stays local."""
-    out = json.loads(tools.team_deploy({"name": "sales", "home": str(tmp_path), "dry_run": True}))
+    out = json.loads(tools.team_deploy({"name": "sales", "dry_run": True},
+                                       home=str(tmp_path)))
     assert out["success"] is True
     assert out.get("mode") != "vps"
 
@@ -394,9 +395,9 @@ def test_default_run_ssh_uses_double_dash(monkeypatch):
 
 
 def test_driver_calls_handlers_with_dict_args():
-    """Round 2 #8: the remote driver must call handlers the Hermes way
-    (dict args), not positional/keyword style."""
+    """Round 2 #8 + round 3 #1: the remote driver must call handlers the
+    Hermes way (dict args for schema keys; CLI-only keys as kwargs)."""
     src = vps.DRIVER_SCRIPT.read_text()
-    assert 'tools.team_deploy({"name": name, "home": home, "verify": False})' in src
-    assert 'tools.team_verify({"name": name, "home": home})' in src
-    assert 'tools.team_rollback({"name": name, "home": home})' in src
+    assert 'tools.team_deploy({"name": name}, home=home, verify=False)' in src
+    assert 'tools.team_verify({"name": name}, home=home)' in src
+    assert 'tools.team_rollback({"name": name}, home=home)' in src

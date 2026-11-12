@@ -45,18 +45,24 @@ def default_home() -> Path:
         return Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes"))
 
 
-def _params(args: dict | None, kwargs: dict, allowed: set[str]) -> dict:
+def _params(args: dict | None, kwargs: dict,
+            schema_keys: set[str], cli_only: set[str] | None = None) -> dict:
     """Merge Hermes-style args dict with explicit kwargs (CLI/tests).
 
-    Review round 2 #4: for Hermes model calls, ONLY schema-listed keys are
-    kept from ``args`` — CLI-only keys (``home``, ``path``, ``out_path``,
-    ``prefix``, ``jobs_path``, ``db_path``…) sent by the model are dropped so
-    the model can never override the plugin's own home resolution or reach
-    arbitrary paths. CLI/tests pass those keys through ``kwargs``, which are
-    still merged for the handler's own allowed set.
+    Review round 3 #1: schema keys are read from ``args`` ONLY — that is the
+    dict the LLM is allowed to send. CLI-only keys (``home``, ``path``,
+    ``out_path``, ``prefix``, ``jobs_path``, ``db_path``, ``verify``…) are
+    accepted ONLY through ``kwargs``, which the CLI / tests / remote driver
+    pass explicitly. A model call like ``team_status({"html": True,
+    "out_path": "/etc/x"})`` or ``blueprint_list({"path": "/etc"})`` can
+    therefore never reach an arbitrary path; unapproved read tools stay
+    read-only against the plugin's own resolved home. ``kwargs`` may also
+    carry schema keys (tests/dev convenience); both sets merge there.
     """
-    merged = {k: v for k, v in (args or {}).items() if k in allowed}
-    for k in allowed:
+    schema_keys = set(schema_keys)
+    cli_only = set(cli_only or ())
+    merged = {k: v for k, v in (args or {}).items() if k in schema_keys}
+    for k in schema_keys | cli_only:
         if k in kwargs and kwargs[k] is not None:
             merged[k] = kwargs[k]
     return merged
@@ -77,7 +83,7 @@ def _refuse_owner_action() -> bool:
 
 
 def blueprint_list(args=None, **kwargs) -> str:
-    p = _params(args, kwargs, {"path"})
+    p = _params(args, kwargs, set(), {"path"})
     root = Path(p["path"]) if p.get("path") else DEFAULT_BLUEPRINTS
     if not root.is_dir():
         return _err(f"blueprint dir not found: {root}")
@@ -121,7 +127,7 @@ def team_deploy(args=None, **kwargs) -> str:
     to run inside a cron worker (no human to approve).
     """
     p = _params(args, kwargs, {"name", "prefix", "dry_run", "host", "ssh_key",
-                               "remote_home", "verify", "home"})
+                               "remote_home"}, {"home", "verify"})
     name = p.get("name", "")
     if _refuse_owner_action():
         return _err("team_deploy is an OWNER ACTION — refused in a cron/unattended run. "
@@ -153,7 +159,7 @@ def team_verify(args=None, **kwargs) -> str:
     (stages the bundle + runs the driver on a REMOTE machine) — gated by the
     pre_tool_call hook and refused in cron/unattended runs (review round 2 #2).
     """
-    p = _params(args, kwargs, {"name", "host", "ssh_key", "remote_home", "home"})
+    p = _params(args, kwargs, {"name", "host", "ssh_key", "remote_home"}, {"home"})
     if p.get("host") and _refuse_owner_action():
         return _err("team_verify with --host is an OWNER ACTION — refused in a cron/unattended "
                     "run. Run it interactively ('hermes teams verify ... --host') so a human approves.")
@@ -172,7 +178,7 @@ def team_verify(args=None, **kwargs) -> str:
 def team_rollback(args=None, **kwargs) -> str:
     """OWNER ACTION: undo a deploy from its snapshot. Only teamops-prefixed
     profiles and files under <home>/teams/<team>/ are ever touched (guard)."""
-    p = _params(args, kwargs, {"name", "host", "ssh_key", "remote_home", "home"})
+    p = _params(args, kwargs, {"name", "host", "ssh_key", "remote_home"}, {"home"})
     if _refuse_owner_action():
         return _err("team_rollback is an OWNER ACTION — refused in a cron/unattended run. "
                     "Run it interactively ('hermes teams rollback ...') so a human approves.")
@@ -194,7 +200,8 @@ def team_factory(args=None, **kwargs) -> str:
     deploy=true is an OWNER ACTION (approval required); the generator itself
     (template + fixture fallback) is safe to run anytime.
     """
-    p = _params(args, kwargs, {"spec", "base", "name", "use_fixture", "deploy", "home"})
+    p = _params(args, kwargs, {"spec", "base", "name", "use_fixture", "deploy"},
+                {"home"})
     if p.get("deploy") and _refuse_owner_action():
         return _err("team_factory deploy is an OWNER ACTION — refused in a cron/unattended "
                     "run. Run it interactively ('hermes teams factory ... --deploy').")
@@ -223,7 +230,7 @@ def team_status(args=None, **kwargs) -> str:
     ``html=True`` writes a self-contained dashboard (fleet panel + interactive
     mesh graph) and returns its file path instead of the JSON report.
     """
-    p = _params(args, kwargs, {"team", "html", "out_path", "home"})
+    p = _params(args, kwargs, {"team", "html"}, {"out_path", "home"})
     try:
         from . import fleet
         home_p = Path(p["home"]) if p.get("home") else default_home()
@@ -240,7 +247,7 @@ def team_status(args=None, **kwargs) -> str:
 
 def cron_scan(args=None, **kwargs) -> str:
     """Cron911: silent gaps + failures + dead models (detect-only)."""
-    p = _params(args, kwargs, {"jobs_path", "db_path"})
+    p = _params(args, kwargs, set(), {"jobs_path", "db_path"})
     try:
         from . import cron911
         home = _resolve_home_arg(p.get("jobs_path"))
@@ -260,7 +267,7 @@ def model_scan(args=None, **kwargs) -> str:
     swap WITHOUT dry_run rewrites model configs — an OWNER ACTION gated by the
     pre_tool_call hook and refused in cron/unattended runs (review round 2 #2).
     """
-    p = _params(args, kwargs, {"swap", "pool", "dry_run", "home"})
+    p = _params(args, kwargs, {"swap", "pool", "dry_run"}, {"home"})
     if p.get("swap") and not p.get("dry_run", True) and _refuse_owner_action():
         return _err("model_scan swap-apply is an OWNER ACTION — refused in a cron/unattended "
                     "run. Run it interactively ('hermes teams model-scan --swap --apply') so a "
@@ -284,7 +291,7 @@ def model_rollback(args=None, **kwargs) -> str:
     Rewrites model configs — OWNER ACTION (approval required), refused in
     cron/unattended runs (review round 2 #2).
     """
-    p = _params(args, kwargs, {"all_swaps", "home"})
+    p = _params(args, kwargs, {"all_swaps"}, {"home"})
     if _refuse_owner_action():
         return _err("model_rollback is an OWNER ACTION — refused in a cron/unattended run. "
                     "Run it interactively ('hermes teams model-rollback') so a human approves.")
@@ -301,7 +308,7 @@ def model_rollback(args=None, **kwargs) -> str:
 
 def team_standup(args=None, **kwargs) -> str:
     """Morning digest: last-Nh cron outcomes per profile + open kanban work."""
-    p = _params(args, kwargs, {"team", "hours", "home"})
+    p = _params(args, kwargs, {"team", "hours"}, {"home"})
     try:
         from . import standup
         home_p = Path(p["home"]) if p.get("home") else default_home()
@@ -313,7 +320,7 @@ def team_standup(args=None, **kwargs) -> str:
 
 def mesh_sync(args=None, **kwargs) -> str:
     """Broadcast a decision to team MESH-MAP.md + shared Mnemosyne surface."""
-    p = _params(args, kwargs, {"message", "author", "team", "home"})
+    p = _params(args, kwargs, {"message", "author", "team"}, {"home"})
     try:
         from . import meshbridge
         home_p = Path(p["home"]) if p.get("home") else default_home()
@@ -326,7 +333,7 @@ def mesh_sync(args=None, **kwargs) -> str:
 
 def team_dashboard(args=None, **kwargs) -> str:
     """Start (or reuse) the LIVE dashboard server; data regenerates per request."""
-    p = _params(args, kwargs, {"port", "open_browser", "home"})
+    p = _params(args, kwargs, {"port", "open_browser"}, {"home"})
     try:
         from . import server
         home_p = _resolve_home_arg(p.get("home"))
@@ -346,7 +353,7 @@ def team_dashboard(args=None, **kwargs) -> str:
 
 
 def team_dashboard_status(args=None, **kwargs) -> str:
-    p = _params(args, kwargs, {"home"})
+    p = _params(args, kwargs, set(), {"home"})
     try:
         from . import server
         return _ok(server.status(_resolve_home_arg(p.get("home"))))
@@ -355,7 +362,7 @@ def team_dashboard_status(args=None, **kwargs) -> str:
 
 
 def team_dashboard_stop(args=None, **kwargs) -> str:
-    p = _params(args, kwargs, {"home"})
+    p = _params(args, kwargs, set(), {"home"})
     try:
         from . import server
         return _ok(server.stop(_resolve_home_arg(p.get("home"))))
@@ -366,12 +373,15 @@ def team_dashboard_stop(args=None, **kwargs) -> str:
 def phone_intake(args=None, **kwargs) -> str:
     """Twilio phone intake: inbound SMS/call -> structured card (OPTIONAL, mock-first).
 
-    Credentials are NEVER stored by the plugin — they are read from the RUNNING
-    USER's env or <home>/config/twilio.env. Without them the LIVE path is blocked
-    and this returns a clean 'disabled' refusal; mock=True always runs.
+    Credentials are NEVER stored by the plugin — they are read from the
+    RUNNING USER's environment through Hermes' secret scope
+    (``agent.secret_scope.get_secret``; declared ``optional_env`` in
+    plugin.yaml). Without them the LIVE path is blocked and this returns a
+    clean 'disabled' refusal; mock=True always runs.
     """
-    p = _params(args, kwargs, {"payload", "channel", "from_number", "to_number", "body",
-                               "transcript", "call_status", "mock", "home", "persist"})
+    p = _params(args, kwargs, {"payload", "channel", "from_number", "to_number",
+                               "body", "transcript", "call_status", "mock",
+                               "persist"}, {"home"})
     try:
         from . import twilio_intake as ti
         home_p = Path(p["home"]) if p.get("home") else default_home()
@@ -392,9 +402,9 @@ def phone_intake(args=None, **kwargs) -> str:
 
 
 def twilio_status(args=None, **kwargs) -> str:
-    """Is Twilio intake configured? (reads YOUR env / <home>/config/twilio.env;
+    """Is Twilio intake configured? (reads YOUR env via Hermes' secret scope;
     outputs masked values only — zero nags when disabled.)"""
-    p = _params(args, kwargs, {"home"})
+    p = _params(args, kwargs, set(), {"home"})
     try:
         from . import twilio_intake as ti
         home_p = Path(p["home"]) if p.get("home") else default_home()
