@@ -331,3 +331,72 @@ def test_manifest_schemas_include_vps_params():
         assert "remote_home" in props
         banned = {"home", "jobs_path", "db_path", "blueprints_root", "path"} & set(props)
         assert not banned, f"{tool} leaks path args: {banned}"
+
+
+# -- review round 2 #1: shell hardening ---------------------------------------
+def test_parse_host_refuses_dash_host():
+    for bad in ("-oProxyCommand=evil", "-l root@host", "root@-oProxyCommand=x",
+                "-vvv user@host"):
+        with pytest.raises(ValueError):
+            vps.parse_host(bad)
+
+
+def test_vps_name_validated():
+    for bad in ("bad name!", "Bad/Name", "", "..", "x" * 65, "a b"):
+        with pytest.raises(ValueError, match="blueprint name"):
+            vps.VpsDeploy(bad, "user@vps")
+    vd = vps.VpsDeploy("sales-2", "user@vps")  # valid
+    assert vd.name == "sales-2"
+
+
+def test_tools_team_deploy_vps_rejects_bad_name():
+    out = json.loads(tools.team_deploy({"name": "bad name!", "host": "user@vps"}))
+    assert out["success"] is False
+    assert "blueprint name" in out["error"]
+
+
+def test_tools_team_deploy_vps_dash_host_degrades_cleanly():
+    """A host starting with '-' cannot inject ssh options — clean disable."""
+    out = json.loads(tools.team_deploy({"name": "sales", "host": "-oProxyCommand=evil"}))
+    assert out["mode"] == "vps" and out["green"] is False
+    assert any(c["name"] == "vps-transport" and c["status"] == "FAIL"
+               for c in out["checks"])
+
+
+def test_run_remote_quotes_remote_home(fake_runner):
+    """shell-metachar values are shlex.quote()d, never interpolated raw."""
+    vd = vps.VpsDeploy("sales", "user@vps",
+                       remote_home="~/.hermes; touch /tmp/pwned")
+    out = vd.deploy(verify=False)
+    assert out["green"] is True
+    cmds = [c for c, _ in fake_runner.calls]
+    deploy_cmd = next(c for c in cmds if "python3 - deploy" in c)
+    assert "HERMES_HOME='~/.hermes; touch /tmp/pwned'" in deploy_cmd
+    assert "HERMES_HOME=~/.hermes;" not in deploy_cmd  # never interpolated raw
+
+
+def test_default_run_ssh_uses_double_dash(monkeypatch):
+    """`ssh -- <host> <cmd>` so option-injection via host names is impossible."""
+    captured = {}
+
+    class FakeProc:
+        returncode = 0
+        stdout = b""
+        stderr = b""
+
+    def fake_run(cmd, **kw):
+        captured["cmd"] = cmd
+        return FakeProc()
+
+    monkeypatch.setattr(vps.subprocess, "run", fake_run)
+    vps.default_run_ssh("echo hi", "user@vps")
+    assert captured["cmd"][-3:] == ["--", "user@vps", "echo hi"]
+
+
+def test_driver_calls_handlers_with_dict_args():
+    """Round 2 #8: the remote driver must call handlers the Hermes way
+    (dict args), not positional/keyword style."""
+    src = vps.DRIVER_SCRIPT.read_text()
+    assert 'tools.team_deploy({"name": name, "home": home, "verify": False})' in src
+    assert 'tools.team_verify({"name": name, "home": home})' in src
+    assert 'tools.team_rollback({"name": name, "home": home})' in src

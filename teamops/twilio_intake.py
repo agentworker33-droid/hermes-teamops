@@ -10,14 +10,16 @@ follow-up) without ever requiring credentials for tests or demos:
   * mock=True / mock payloads   -> the full pipeline runs with fake
     transcripts, ledger writes and TwiML acks — always works.
 
-Credentials follow the CREDS-SOURCE rule (boss-live 2026-11-09): the plugin
-NEVER stores or ships credentials. It only READS TWILIO_ACCOUNT_SID /
-TWILIO_AUTH_TOKEN / TWILIO_PHONE_NUMBER from the RUNNING USER's environment
-or from <home>/config/twilio.env (the user's own dotenv file). Outputs only
-ever show masked values. This module never calls the Twilio REST API — the
-handler pipeline is the inbound wiring (an external webhook wrapper calls
-phone_intake / handle_inbound once a real host is configured), so REAL calls
-are blocked by design until the user's own creds exist.
+Credentials follow the CREDS-SOURCE rule (boss-live 2026-11-09) + catalog
+review round 2 #6: the plugin NEVER stores or ships credentials. It only
+reads TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_PHONE_NUMBER through
+Hermes' own secret scope (``agent.secret_scope.get_secret``), falling back to
+the RUNNING USER's environment — declared as ``optional_env`` in plugin.yaml.
+No ``twilio.env`` file is ever read. Outputs only ever show masked values.
+This module never calls the Twilio REST API — the handler pipeline is the
+inbound wiring (an external webhook wrapper calls phone_intake /
+handle_inbound once a real host is configured), so REAL calls are blocked by
+design until the user's own creds exist.
 """
 from __future__ import annotations
 
@@ -60,47 +62,57 @@ TRIAGE_RULES = [
 ]
 
 
-def _dotenv_values(path: Path) -> dict:
-    """Parse KEY=VALUE lines (comments/blank ignored) — zero dependencies."""
-    out: dict[str, str] = {}
-    if not path.is_file():
-        return out
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, val = line.partition("=")
-        out[key.strip()] = val.strip().strip('"').strip("'")
-    return out
+def _secret_scope_get(name: str) -> str | None:
+    """Hermes' own secret scope, when running inside a Hermes runtime.
+
+    Honors the active profile's secret scope (never another profile's value);
+    falls back to the process env like the rest of Hermes. Returns None when
+    the runtime API is unavailable (tests, standalone CLI runs).
+    """
+    try:
+        from agent.secret_scope import get_secret
+        return get_secret(name, None)
+    except Exception:  # noqa: BLE001 — standalone/dev runs without hermes-agent
+        return None
 
 
 def load_config(home: str | Path | None = None,
                 environ: dict | None = None) -> dict:
-    """Read Twilio creds from the running user's env / <home>/config/twilio.env.
+    """Read Twilio creds from Hermes secret scope / the running user's env.
+
+    Review round 2 #6: the ``<home>/config/twilio.env`` dotenv read is gone —
+    the plugin declares ``optional_env`` in plugin.yaml and reads each name
+    through ``agent.secret_scope.get_secret`` (which itself wraps the profile
+    scope + process env), with an explicit ``environ`` override for tests.
 
     Returns a dict with internal (unmasked) values plus `present`/`reason`.
     Nothing is written or cached — the plugin never stores credentials.
     """
-    env = dict(environ) if environ is not None else dict(os.environ)
-    home_p = Path(home) if home else DEFAULT_HOME
-    vals = _dotenv_values(home_p / "config" / "twilio.env")
-    for name in ENV_NAMES:  # env wins over dotenv
-        if name in env and env[name]:
-            vals[name] = env[name]
+    env = dict(environ) if environ is not None else None
+    vals: dict[str, str] = {}
+    for name in ENV_NAMES:
+        scoped = _secret_scope_get(name)
+        if scoped:
+            vals[name] = scoped
+    source_env = env if env is not None else os.environ
+    for name in ENV_NAMES:  # explicit environ / process env still wins
+        if name in source_env and source_env[name]:
+            vals[name] = source_env[name]
     sid = vals.get(ENV_SID, "").strip()
     auth = vals.get(ENV_AUTH, "").strip()
     phone = vals.get(ENV_PHONE, "").strip()
     missing = [n for n, v in ((ENV_SID, sid), (ENV_AUTH, auth), (ENV_PHONE, phone)) if not v]
     present = not missing
     source = "env"
-    if present and ENV_SID not in env:
-        source = "twilio.env"
+    if present and ENV_SID not in source_env:
+        source = "secret_scope"
     reason = ""
     if missing:
         reason = (
             f"disabled — Twilio credentials not configured (missing {', '.join(missing)}). "
-            f"Set {ENV_SID}/{ENV_AUTH}/{ENV_PHONE} in your environment or write "
-            f"<home>/config/twilio.env. Mock mode still works (mock=True)."
+            f"Set {ENV_SID}/{ENV_AUTH}/{ENV_PHONE} via Hermes secret storage or export "
+            f"them in the running user's environment (declared optional_env). "
+            f"Mock mode still works (mock=True)."
         )
     return {
         "present": present,
@@ -278,8 +290,9 @@ def status(home: str | Path | None = None) -> dict:
         "phone_number_masked": _mask(cfg["phone_number"]) if cfg["phone_number"] else None,
         "source": cfg["source"],
         "reason": cfg["reason"] or "Twilio intake enabled — real inbound calls/SMS route through phone_intake",
-        "how_to_enable": (f"export {ENV_SID}=... {ENV_AUTH}=... {ENV_PHONE}=... "
-                          f"(or write <home>/config/twilio.env)"),
+        "how_to_enable": (f"provide {ENV_SID}/{ENV_AUTH}/{ENV_PHONE} via Hermes secret "
+                          f"storage or export them in the running user's environment "
+                          f"(declared optional_env in plugin.yaml)"),
     }
 
 

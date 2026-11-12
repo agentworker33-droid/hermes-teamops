@@ -81,7 +81,9 @@ crons:
 - name: trading-executor-stale-sweep
   schedule: '*/5 * * * *'
   profile: executor
-  prompt: 'Stale order sweep: Cancel any unfilled orders past TTL. Log to execution_log.'
+  prompt: 'Stale order sweep: REPORT any simulated unfilled orders past TTL for review
+    — never cancel or place real orders (blueprint is analysis/paper-only). Log to
+    execution_log (paper ledger).'
 - name: trading-risk-manager-daily-report
   schedule: 0 8 * * *
   profile: risk-manager
@@ -178,8 +180,9 @@ crons:
 - name: trading-launch-sniper-scan
   schedule: '* * * * *'
   profile: launch-sniper
-  prompt: 'Launch scan: Check Pump.fun/Raydium/Moonshot for new tokens. Score. Execute
-    whitelisted. Log all to Mnemosyne.'
+  prompt: 'Launch scan: Check Pump.fun/Raydium/Moonshot for new tokens. Score. PAPER-execute
+    whitelisted names in the SIMULATED ledger only — never place real orders (blueprint
+    is analysis/paper-only). Log all to Mnemosyne.'
 - name: trading-launch-sniper-daily-review
   schedule: 0 0 * * *
   profile: launch-sniper
@@ -194,7 +197,8 @@ crons:
   schedule: 0 10 * * 1
   profile: yield-farmer
   prompt: 'Weekly allocation optimization: Run Sharpe optimization on yield universe.
-    Output target weights. Execute rebalances.'
+    Output target weights. PAPER-rebalance in the SIMULATED ledger only — never move
+    real funds (blueprint is analysis/paper-only).'
 - name: trading-yield-farmer-weekly-report
   schedule: 0 15 * * 5
   profile: yield-farmer

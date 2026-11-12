@@ -85,3 +85,34 @@ def test_kanban_parses(ported_blueprints):
         for task in kanban["tasks"].values():
             assert task["assignee"] in {r["name"] for r in bp.roles}, \
                 f"{name} kanban assignee {task['assignee']} not a role"
+
+
+def test_blueprint_loader_rejects_escape(tmp_path):
+    """Round 2 #4: bare-name blueprint paths resolve ONLY inside the root."""
+    from teamops import build
+    root = tmp_path / "blueprints"
+    root.mkdir()
+    (root / "ok").mkdir()
+    (root / "ok" / "team.yaml").write_text("name: ok\nroles: []\n")
+    bp = build.load_blueprint("ok", blueprints_root=root)
+    assert bp.name == "ok"
+    with pytest.raises(ValueError, match="escapes allowed root"):
+        build.load_blueprint("../outside", blueprints_root=root)
+    with pytest.raises(ValueError, match="escapes allowed root"):
+        build.load_blueprint("/etc/passwd", blueprints_root=root)
+
+
+def test_trading_blueprint_paper_only():
+    """Round 2 #7: the trading blueprint ships analysis/paper-only — no
+    unattended money-move crons."""
+    trading = BLUEPRINTS / "trading"
+    team = yaml.safe_load((trading / "team.yaml").read_text())
+    assert team.get("paper_only") is True
+    assert "paper-only" in (team.get("description") or "").lower()
+    text = (trading / "crons.yaml").read_text()
+    assert "Execute\n    whitelisted" not in text            # sniper executes -> paper
+    assert "Execute rebalances" not in text                  # yield farmer moves -> paper
+    assert "Cancel any unfilled orders past TTL" not in text  # executor sweep -> report
+    low = text.lower()
+    assert ("paper-only" in low or "paper-execute" in low
+            or "paper-rebalance" in low)

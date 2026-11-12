@@ -15,14 +15,28 @@ CLI: `hermes teams <command>`. Tool surface mirrors it: `blueprint_list`, `team_
 Plan: `~/.hermes/plans/2026-11-08_0450-hermes-teamops-plugin.md`
 Build worklog: `WORKLOG.md` (cron shifts append here after every task).
 
-Status: **catalog review fixes landed (Nov 10 evening)** — all 7 reviewer points from
-PR #151675: Hermes dict-args tool contract + OpenAI-shape schemas; PyYAML declared in
-`python_dependencies`; Agent Factory is now template-only (no home-dir script runner);
-deploy/rollback/factory-deploy are OWNER ACTIONS gated by a `pre_tool_call` approve
-hook and refused in cron/unattended runs; blueprint/soul/shared paths confined to the
-blueprint root; path args removed from tool schemas (CLI-only) + `hermes_constants`
-home resolution; docs/skill match the code, skill registered via `ctx.register_skill`.
-180 tests. D2/D3 work (dashboard, model-swap, verticals, VPS, Twilio) all green.**
+Status: **catalog review round 2 fixes landed (Nov 11 evening)** — PR #151675
+re-review points 1-9: vps remote commands fully shlex.quote()d + blueprint
+names validated `^[a-z0-9-]{1,64}$` + hosts starting with `-` refused + `--`
+before the ssh host; `team_verify --host`, `model_scan` swap-apply and
+`model_rollback` promoted to owner actions (approval + cron refusal);
+dashboard server hardened (per-start 0600 token for `/api/action`, no CORS,
+Host must be loopback, `last_run` confined to `<home>/teams/<team>/`, 
+`run_script` gets a minimal PATH/HOME/LANG env, deploy action disabled —
+CLI approval only); model args filtered to schema keys + blueprint-path
+containment on the bare-name branch; factory default root moved to
+`<home>/plugin-data/teamops/blueprints/` and bundled blueprint names are
+refused; Twilio creds read via `agent.secret_scope` (declared `optional_env`,
+no `twilio.env`); trading blueprint is analysis/paper-only; remote driver
+calls handlers with dict args; docs match all of it. **206 tests.**
+Round-1 fixes (Nov 10 evening, all 7 points): Hermes dict-args tool
+contract + OpenAI-shape schemas; PyYAML declared in `python_dependencies`;
+Agent Factory is template-only (no home-dir script runner); deploy/rollback/
+factory-deploy are OWNER ACTIONS gated by a `pre_tool_call` approve hook and
+refused in cron/unattended runs; blueprint/soul/shared paths confined to the
+blueprint root; path args removed from tool schemas (CLI-only) +
+`hermes_constants` home resolution; docs/skill match the code, skill
+registered via `ctx.register_skill`.
 
 ## Install
 
@@ -79,10 +93,10 @@ hermes teams twilio-status                                   # enabled? masked o
 hermes teams rollback sales       # undo the deploy
 
 # Twilio intake (OPTIONAL, mock-first): real inbound calls/SMS are BLOCKED
-# until you configure credentials from YOUR OWN environment — the plugin never
-# stores or ships them:
+# until credentials are available from YOUR OWN environment — the plugin never
+# stores or ships them (declared optional_env in plugin.yaml):
 #   export TWILIO_ACCOUNT_SID=... TWILIO_AUTH_TOKEN=... TWILIO_PHONE_NUMBER=...
-#   # or write <home>/config/twilio.env with those three keys
+#   # or provide them via Hermes secret storage (agent.secret_scope.get_secret)
 # The pipeline: webhook payload → (transcribe) → intent triage → structured
 # card → agent follow-up ledger at <home>/plugin-data/teamops/intake/.
 # Without creds: phone-intake returns a clean 'disabled' refusal, mock=True
@@ -112,7 +126,8 @@ compliance, monitor + 4 satellites), `real-estate` (14 roles — broker + listin
 buyer agents, inside sales, transaction coordinator, marketing, ops, client care,
 document processor, market intelligence + industry tier), `trading` (10 roles —
 boss, researcher, analyst, executor, risk-manager, portfolio-manager, monitor +
-polymarket/launch-sniper/yield-farmer satellites). `fixtures/billing-agent` is
+polymarket/launch-sniper/yield-farmer satellites; **analysis/paper-only**: every
+cron observes/scores/simulates, no real money, orders or wallet keys). `fixtures/billing-agent` is
 the pre-baked demo output of the Agent Factory (`use_fixture=true`).
 
 ## Modules
@@ -121,12 +136,12 @@ the pre-baked demo output of the Agent Factory (`use_fixture=true`).
 |---|---|
 | `build.py` | blueprint loader + deploy/verify/rollback orchestration |
 | `guard.py` | Deploy Guard: preflight / deploy / smoke / rollback (local, not VPS) |
-| `vps.py` | OPTIONAL VPS provisioning: deploy/verify/rollback `--host user@host[:port]` — remote preflight (python/disk/RAM/home), tar-stream bundle upload, remote driver `scripts/remote-driver.py`, staging cleanup; creds = the RUNNING USER's own ssh (agent/keys or `--ssh-key`), never stored; no ssh/auth → clean disable, locals untouched |
-| `factory.py` | Agent Factory (template-only generator: extend a base blueprint with a role, or scaffold a team; fixture fallback for demos) |
+| `vps.py` | OPTIONAL VPS provisioning: deploy/verify/rollback `--host user@host[:port]` — remote preflight (python/disk/RAM/home), tar-stream bundle upload, remote driver `scripts/remote-driver.py`, staging cleanup; creds = the RUNNING USER's own ssh (agent/keys or `--ssh-key`), never stored; blueprint names validated `^[a-z0-9-]{1,64}$`, every remote shell value shlex-quoted, `--` before the host, hosts starting with `-` refused; no ssh/auth → clean disable, locals untouched |
+| `factory.py` | Agent Factory (template-only generator: extend a base blueprint with a role, or scaffold a team; fixture fallback for demos). Writes under `<home>/plugin-data/teamops/blueprints/` (or config `factory.blueprints_root`); bundled blueprint names are refused |
 | `fleet.py` | fleet reads: profiles, jobs.json, executions.db, memory %, mesh; team grouping + ephemeral-team inventory |
 | `dashboard.py` | self-contained HTML dashboard (fleet panel, cron health, interactive SVG mesh graph; no CDN) |
-| `server.py` | LIVE dashboard server: fresh HTML per request, /health, daemonize, stop (mnemosyne-dashboard pattern) |
-| `twilio_intake.py` | OPTIONAL Twilio phone intake: webhook payload → transcribe → intent triage → structured card → agent follow-up ledger; creds read from YOUR env / `<home>/config/twilio.env` (never stored/shipped), mock-first, no-creds → clean disable |
+| `server.py` | LIVE dashboard server: fresh HTML per request, /health, daemonize, stop (mnemosyne-dashboard pattern). Loopback-only + Host check, NO CORS, per-start 0600 token gates `/api/action`; `last_run` confined to `<home>/teams/<team>/`; `run_script` spawns with a minimal PATH/HOME/LANG env; deploy action disabled (CLI approval only) |
+| `twilio_intake.py` | OPTIONAL Twilio phone intake: webhook payload → transcribe → intent triage → structured card → agent follow-up ledger; creds read through Hermes secret scope (`agent.secret_scope.get_secret`) / your env (declared `optional_env`, never stored/shipped), mock-first, no-creds → clean disable |
 | `cron911.py` | silent-gap + failure + dead-model detection (detect-only; multi-rule rows merged) |
 | `modelguard.py` | dead-model detect + recommend; OPT-IN swap to a user-configured fallback pool (config `modelguard.fallback_pool`), changelog + rollback |
 | `standup.py` | last-24h digest generator |
@@ -139,19 +154,24 @@ the pre-baked demo output of the Agent Factory (`use_fixture=true`).
 python3 -m pytest -q
 ```
 
-180 tests: blueprint loader (+ structural integrity for all 6 baked blueprints:
+206 tests: blueprint loader (+ structural integrity for all 6 baked blueprints:
 roles→souls, cron→role references, unique prefixed cron names, mesh→role edges,
-kanban assignees), Deploy Guard (mocked hermes; rollback scope confinement;
-cron.allow_agent_scheduling honouring), factory template generator + fixtures,
+kanban assignees, trading paper-only flag), Deploy Guard (mocked hermes;
+rollback scope confinement; cron.allow_agent_scheduling honouring), factory
+template generator + fixtures + bundled-slug refusal + home plugin-data root,
 fleet/cron911/modelguard/standup/meshbridge/dashboard/server against a fake HERMES_HOME
 built with the real jobs.json + executions.db schema, VPS provisioning via a
-FAKE ssh runner (host parsing, remote preflight decisions, bundle upload,
-remote deploy/verify/rollback, graceful no-creds degrade), Twilio intake
-config (env + dotenv source, masked output), payload parsing, intent triage,
+FAKE ssh runner (host parsing incl. dash-host refusal, name validation, remote
+preflight decisions, shlex-quoted remote commands, double-dash argv, bundle
+upload, remote deploy/verify/rollback, graceful no-creds degrade), dashboard
+server security (per-start token 403s, loopback Host check, no CORS, last_run
+confinement, deploy disabled, minimal run_script env), Twilio intake
+config (secret-scope + env source, masked output), payload parsing, intent triage,
 full mock pipeline + ledger, live-blocked-without-creds refusal, tool + CLI
 wiring, plus a manifest-coherence test pinning plugin.yaml ⇄ schemas ⇄ handlers,
-the Hermes dict-args handler contract (handler({"name": "sales"})), and
-model-swap pool/rollback tests.
+the Hermes dict-args handler contract (handler({"name": "sales"})), model-swap
+pool/rollback tests, and the round-2 approval-hook matrix
+(team_verify --host / model_scan swap-apply / model_rollback).
 
 ## Cut list (NOT in v1)
 
@@ -164,8 +184,9 @@ never stored or shipped by the plugin) and degrades to a clean disable message
 when ssh/auth is absent; managed VPS delivery remains the paid website product.
 Twilio phone intake IS in v1 but mock-first and strictly OPTIONAL: real
 inbound calls/SMS are blocked until the user's own `TWILIO_ACCOUNT_SID` /
-`TWILIO_AUTH_TOKEN` / `TWILIO_PHONE_NUMBER` exist (env or
-`<home>/config/twilio.env`); no creds → clean 'disabled' refusal, `mock=True`
+`TWILIO_AUTH_TOKEN` / `TWILIO_PHONE_NUMBER` exist (Hermes secret scope or the
+running user's env — declared `optional_env` in plugin.yaml); no creds →
+clean 'disabled' refusal, `mock=True`
 always works, outputs are masked, and the plugin never stores or ships
 credentials.
 Auto model-swap IS in v1 but strictly OPT-IN: it only ever swaps to models the

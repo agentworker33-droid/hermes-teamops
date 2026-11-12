@@ -11,12 +11,13 @@ Path-like arguments (``home``, ``jobs_path``, ``db_path``, ``blueprints_root``,
 the default HERMES_HOME resolves through ``hermes_constants.get_hermes_home()``
 with an env-var fallback for tests/dev runs outside the Hermes runtime.
 
-OWNER ACTIONS (``team_deploy``, ``team_rollback``, ``team_factory`` with
-``deploy=true``) are gated by a ``pre_tool_call`` hook registered in
+OWNER ACTIONS (``team_deploy``, ``team_rollback``, ``team_verify`` with
+``--host``, ``team_factory`` with ``deploy=true``, ``model_scan`` swap-apply,
+``model_rollback``) are gated by a ``pre_tool_call`` hook registered in
 ``__init__.py``: the hook returns an ``approve`` directive so the call
 escalates to the human-approval gate, and fails closed in cron/unattended
-runs (catalog review #4). The handlers themselves also defend: they refuse
-to run an owner action when a cron-worker marker is present.
+runs (catalog review #4 + round 2 #2). The handlers themselves also defend:
+they refuse to run an owner action when a cron-worker marker is present.
 """
 from __future__ import annotations
 
@@ -45,9 +46,16 @@ def default_home() -> Path:
 
 
 def _params(args: dict | None, kwargs: dict, allowed: set[str]) -> dict:
-    """Merge Hermes-style args dict with explicit kwargs (CLI/tests), keeping
-    only keys the handler understands (context kwargs are dropped)."""
-    merged = dict(args or {})
+    """Merge Hermes-style args dict with explicit kwargs (CLI/tests).
+
+    Review round 2 #4: for Hermes model calls, ONLY schema-listed keys are
+    kept from ``args`` — CLI-only keys (``home``, ``path``, ``out_path``,
+    ``prefix``, ``jobs_path``, ``db_path``…) sent by the model are dropped so
+    the model can never override the plugin's own home resolution or reach
+    arbitrary paths. CLI/tests pass those keys through ``kwargs``, which are
+    still merged for the handler's own allowed set.
+    """
+    merged = {k: v for k, v in (args or {}).items() if k in allowed}
     for k in allowed:
         if k in kwargs and kwargs[k] is not None:
             merged[k] = kwargs[k]
@@ -139,7 +147,16 @@ def team_deploy(args=None, **kwargs) -> str:
 
 
 def team_verify(args=None, **kwargs) -> str:
+    """Run Deploy Guard smoke checks on a deployed team.
+
+    Local verify is read-only; with --host it becomes an owner action
+    (stages the bundle + runs the driver on a REMOTE machine) — gated by the
+    pre_tool_call hook and refused in cron/unattended runs (review round 2 #2).
+    """
     p = _params(args, kwargs, {"name", "host", "ssh_key", "remote_home", "home"})
+    if p.get("host") and _refuse_owner_action():
+        return _err("team_verify with --host is an OWNER ACTION — refused in a cron/unattended "
+                    "run. Run it interactively ('hermes teams verify ... --host') so a human approves.")
     try:
         home = Path(p["home"]) if p.get("home") else None
         if p.get("host"):
@@ -240,8 +257,14 @@ def model_scan(args=None, **kwargs) -> str:
     ``swap=False`` (default) is detect + recommend only. ``swap=True`` is the
     OPT-IN auto-swap mode: dead pinned models and scope defaults are swapped to
     the first pool fallback. Dry-run by default; never runs without a pool.
+    swap WITHOUT dry_run rewrites model configs — an OWNER ACTION gated by the
+    pre_tool_call hook and refused in cron/unattended runs (review round 2 #2).
     """
     p = _params(args, kwargs, {"swap", "pool", "dry_run", "home"})
+    if p.get("swap") and not p.get("dry_run", True) and _refuse_owner_action():
+        return _err("model_scan swap-apply is an OWNER ACTION — refused in a cron/unattended "
+                    "run. Run it interactively ('hermes teams model-scan --swap --apply') so a "
+                    "human approves.")
     try:
         from . import modelguard
         home_p = Path(p["home"]) if p.get("home") else default_home()
@@ -256,8 +279,15 @@ def model_scan(args=None, **kwargs) -> str:
 
 
 def model_rollback(args=None, **kwargs) -> str:
-    """Undo model-guard swaps from the changelog (most recent, or --all)."""
+    """Undo model-guard swaps from the changelog (most recent, or --all).
+
+    Rewrites model configs — OWNER ACTION (approval required), refused in
+    cron/unattended runs (review round 2 #2).
+    """
     p = _params(args, kwargs, {"all_swaps", "home"})
+    if _refuse_owner_action():
+        return _err("model_rollback is an OWNER ACTION — refused in a cron/unattended run. "
+                    "Run it interactively ('hermes teams model-rollback') so a human approves.")
     try:
         from . import modelguard
         home_p = Path(p["home"]) if p.get("home") else default_home()

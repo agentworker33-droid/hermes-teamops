@@ -74,6 +74,8 @@ def load_blueprint(name_or_path: str, blueprints_root: Path | None = None) -> Bl
         root = cand_r if (cand_r / "team.yaml").exists() else cand_r.parent
     else:
         root = (root_dir / name_or_path).resolve()
+        if root != root_dir and root_dir not in root.parents:
+            raise ValueError(f"blueprint path escapes allowed root {root_dir}: {name_or_path}")
     return Blueprint(root)
 
 

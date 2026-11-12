@@ -23,13 +23,15 @@ so the suite never touches the network.
 """
 from __future__ import annotations
 
+import io
 import json
 import os
+import re
 import secrets
+import shlex
 import shutil
 import subprocess
 import tarfile
-import io
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -37,6 +39,10 @@ from .guard import CheckResult, MIN_FREE_BYTES
 
 MIN_REMOTE_MEM_MB = 512
 MIN_PYTHON: tuple[int, int] = (3, 9)
+
+# Catalog review round 2 #1: blueprint names passed into the remote shell are
+# validated against a strict charset — never interpolated unquoted.
+NAME_RE = re.compile(r"^[a-z0-9-]{1,64}$")
 
 # ssh options: BatchMode => never prompt for a password (clean failure instead),
 # ConnectTimeout => fail fast, accept-new => a fresh VPS has no known_hosts entry
@@ -61,11 +67,15 @@ DRIVER_SCRIPT = Path(__file__).resolve().parent / "scripts" / "remote-driver.py"
 
 def default_run_ssh(command: str, host: str, key: str | None = None,
                     stdin_bytes: bytes | None = None, timeout: int = 120) -> tuple[int, str]:
-    """Run `ssh <host> <command>`; returns (exit_code, stdout+stderr)."""
+    """Run `ssh <host> <command>`; returns (exit_code, stdout+stderr).
+
+    ``--`` terminates option parsing before the host so a host/name beginning
+    with ``-`` can never be interpreted as an ssh option (review round 2 #1).
+    """
     cmd = ["ssh", *SSH_BASE_OPTS]
     if key:
         cmd += ["-i", str(Path(key).expanduser())]
-    cmd += [host, command]
+    cmd += ["--", host, command]
     try:
         proc = subprocess.run(
             cmd, capture_output=True, timeout=timeout,
@@ -82,8 +92,14 @@ def default_run_ssh(command: str, host: str, key: str | None = None,
 
 
 def parse_host(host: str) -> tuple[str, str, str | None]:
-    """Parse 'user@host[:port]' / 'host[:port]'. Defaults user to current user."""
+    """Parse 'user@host[:port]' / 'host[:port]'. Defaults user to current user.
+
+    Refuses host specs that begin with ``-`` (ssh option injection) — review
+    round 2 #1.
+    """
     spec = host.strip()
+    if spec.startswith("-"):
+        raise ValueError(f"invalid host {host!r}: host must not start with '-'")
     user = os.environ.get("USER") or os.environ.get("USERNAME") or "root"
     port: str | None = None
     if "@" in spec:
@@ -100,6 +116,8 @@ def parse_host(host: str) -> tuple[str, str, str | None]:
         hostname = spec
     if not hostname or any(c in hostname for c in " /@:"):
         raise ValueError(f"invalid host {host!r}: expected [user@]host[:port]")
+    if hostname.startswith("-") or user.startswith("-"):
+        raise ValueError(f"invalid host {host!r}: host/user must not start with '-'")
     return user, hostname, port
 
 
@@ -158,6 +176,10 @@ class VpsDeploy:
 
     def __init__(self, name: str, host: str, key: str | None = None,
                  remote_home: str | None = None):
+        if not NAME_RE.match(name or ""):
+            raise ValueError(
+                f"invalid blueprint name {name!r}: must match ^[a-z0-9-]{{1,64}}$ "
+                "(no spaces, slashes or shell metacharacters)")
         self.name = name
         self.host = host
         self.key = key
@@ -270,9 +292,10 @@ class VpsDeploy:
     def _stage_remote(self) -> bool:
         self.staging = f"/tmp/teamops-vps-{secrets.token_hex(4)}"
         bundle = self._bundle()
+        sq = shlex.quote(self.staging)
         # mkdir + untar the stream in one roundtrip
         code, out = self._ssh(
-            f"mkdir -p {self.staging} && tar xzf - -C {self.staging}",
+            f"mkdir -p {sq} && tar xzf - -C {sq}",
             stdin_bytes=bundle, timeout=180,
         )
         if code != 0:
@@ -282,14 +305,20 @@ class VpsDeploy:
         return True
 
     def _run_remote(self, op: str) -> dict:
-        """Execute the driver on the remote; returns parsed JSON summary."""
+        """Execute the driver on the remote; returns parsed JSON summary.
+
+        Every interpolated value (staging, remote home, blueprint name) is
+        shlex.quote()d — the remote command is a shell string built from
+        values that can be model-controlled (review round 2 #1).
+        """
+        sq = shlex.quote(self.staging or "")
         env = (
-            f"PYTHONPATH={self.staging} "
-            f"HERMES_HOME={self.remote_home} "
-            f"TEAMOPS_NAME={self.name}"
+            f"PYTHONPATH={sq} "
+            f"HERMES_HOME={shlex.quote(self.remote_home)} "
+            f"TEAMOPS_NAME={shlex.quote(self.name)}"
         )
         code, out = self._ssh(
-            f"cd {self.staging} && {env} python3 - {op}",
+            f"cd {sq} && {env} python3 - {op}",
             stdin_bytes=self._driver(), timeout=300,
         )
         if code != 0:
@@ -301,7 +330,7 @@ class VpsDeploy:
 
     def _cleanup_staging(self) -> None:
         if self.staging:
-            self._ssh(f"rm -rf {self.staging}", timeout=60)
+            self._ssh(f"rm -rf {shlex.quote(self.staging or '')}", timeout=60)
 
     # -- 3. flows ------------------------------------------------------------
     def deploy(self, dry_run: bool = False, verify: bool = True) -> dict:

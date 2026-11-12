@@ -32,11 +32,11 @@ def main() -> int:
         print(json.dumps({"success": False, "error": f"plugin bundle not importable: {e}"}))
         return 1
     if op == "deploy":
-        out = tools.team_deploy(name, home=home, verify=False)
+        out = tools.team_deploy({"name": name, "home": home, "verify": False})
     elif op == "verify":
-        out = tools.team_verify(name, home=home)
+        out = tools.team_verify({"name": name, "home": home})
     elif op == "rollback":
-        out = tools.team_rollback(name, home=home)
+        out = tools.team_rollback({"name": name, "home": home})
     else:
         out = json.dumps({"success": False, "error": f"unknown op {op!r}"})
     print(out)

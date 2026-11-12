@@ -135,3 +135,56 @@ def test_pre_tool_call_hook_approves_owner_tools():
     assert d is None
     d = _on_pre_tool_call(tool_name="team_status", args={})
     assert d is None
+
+
+def test_pre_tool_call_hook_round2_expansion():
+    """Round 2 #2: team_verify --host / model_scan swap-apply / model_rollback
+    are owner actions; local verify + detect-only scans stay ungated."""
+    from teamops import _on_pre_tool_call
+    # team_verify: gated ONLY when host is set (remote writes)
+    d = _on_pre_tool_call(tool_name="team_verify",
+                          args={"name": "sales", "host": "user@vps"})
+    assert d and d["action"] == "approve" and d["rule_key"] == "teamops.team_verify.host"
+    assert _on_pre_tool_call(tool_name="team_verify", args={"name": "sales"}) is None
+    # model_scan: gated ONLY on swap WITHOUT dry_run (apply writes configs)
+    d = _on_pre_tool_call(tool_name="model_scan", args={"swap": True, "dry_run": False})
+    assert d and d["action"] == "approve" and d["rule_key"] == "teamops.model_scan.swap_apply"
+    assert _on_pre_tool_call(tool_name="model_scan",
+                             args={"swap": True, "dry_run": True}) is None
+    assert _on_pre_tool_call(tool_name="model_scan", args={"swap": False}) is None
+    assert _on_pre_tool_call(tool_name="model_scan", args={}) is None
+    # model_rollback: always an owner action
+    d = _on_pre_tool_call(tool_name="model_rollback", args={})
+    assert d and d["action"] == "approve" and d["rule_key"] == "teamops.model_rollback"
+
+
+def test_owner_actions_round2_refused_in_cron_worker(hermetic_args, monkeypatch):
+    """Round 2 #2: the newly gated tools carry the same cron-worker refusal as
+    team_deploy; read-only/locally-safe variants keep working."""
+    monkeypatch.setenv("_HERMES_CRON_EXTERNAL_WORKER", "exec-123")
+    # remote verify refused
+    out = json.loads(tools.team_verify({**hermetic_args["team_verify"], "host": "user@vps"}))
+    assert out["success"] is False and "OWNER ACTION" in out["error"]
+    # local verify stays read-only and works
+    out = json.loads(tools.team_verify(hermetic_args["team_verify"]))
+    assert out["success"] is True
+    # swap-apply refused
+    out = json.loads(tools.model_scan({**hermetic_args["model_scan"],
+                                       "swap": True, "dry_run": False}))
+    assert out["success"] is False and "OWNER ACTION" in out["error"]
+    # detect-only still works
+    out = json.loads(tools.model_scan(hermetic_args["model_scan"]))
+    assert out["success"] is True
+    # model_rollback refused
+    out = json.loads(tools.model_rollback(hermetic_args["model_rollback"]))
+    assert out["success"] is False and "OWNER ACTION" in out["error"]
+
+
+def test_params_drops_model_supplied_path_keys():
+    """Round 2 #4: model args are filtered to schema keys — CLI-only path keys
+    sent by the model are dropped; CLI kwargs still merge."""
+    merged = tools._params({"name": "sales", "home": "/etc",
+                            "path": "/tmp/x", "evil": 1}, {}, {"name"})
+    assert merged == {"name": "sales"}
+    merged = tools._params({"name": "sales"}, {"home": "/tmp/h"}, {"name", "home"})
+    assert merged == {"name": "sales", "home": "/tmp/h"}

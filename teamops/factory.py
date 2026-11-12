@@ -8,9 +8,11 @@ roles named in the spec. A pre-baked fixture (``blueprints/fixtures/``) is
 still available for demos via ``use_fixture`` — a deterministic, tested output
 that never depends on external machinery.
 
-All paths the generator reads/writes stay under the plugin's ``blueprints/``
-dir (or an owner-configured root the caller resolves); nothing outside.
-"""
+All paths the generator reads/writes stay under the owner-configurable
+blueprint root — default ``<target HERMES_HOME>/plugin-data/teamops/
+blueprints/`` (never the plugin's bundled ``blueprints/`` dir) — and slugs
+matching a bundled blueprint are refused (review round 2 #5)."""
+
 from __future__ import annotations
 
 import json
@@ -196,11 +198,17 @@ def _dump_yaml(data: dict) -> str:
 
 
 def _owner_blueprint_root(home: Path | None = None) -> Path:
-    """Owner-configurable blueprint root: <target home>/config/teamops.yaml
-    key factory.blueprints_root, else the plugin's blueprints dir."""
+    """Owner-configurable blueprint root.
+
+    Resolution order: ``<target home>/config/teamops.yaml`` key
+    ``factory.blueprints_root``, else ``<target home>/plugin-data/teamops/
+    blueprints/`` (review round 2 #5 — generated blueprints never write into
+    the plugin's bundled ``blueprints/`` dir where ``rmtree`` could hit a
+    shipped blueprint). ``home`` defaults to the resolved HERMES_HOME.
+    """
+    from .tools import default_home
+    cfg_home = Path(home) if home is not None else default_home()
     try:
-        from .tools import default_home
-        cfg_home = home if home is not None else default_home()
         cfg = Path(cfg_home) / "config" / "teamops.yaml"
         if cfg.exists():
             import yaml
@@ -211,7 +219,16 @@ def _owner_blueprint_root(home: Path | None = None) -> Path:
                 return Path(root).expanduser()
     except Exception:  # noqa: BLE001
         pass
-    return BLUEPRINTS_DIR
+    return Path(cfg_home) / "plugin-data" / "teamops" / "blueprints"
+
+
+def _bundled_slugs() -> set[str]:
+    """Names of BUNDLED blueprints — factory generation refuses these so an
+    ``rmtree`` can never delete a shipped blueprint (review round 2 #5)."""
+    if not BLUEPRINTS_DIR.is_dir():
+        return set()
+    return {d.name for d in BLUEPRINTS_DIR.iterdir()
+            if d.is_dir() and d.name != "fixtures" and (d / "team.yaml").exists()}
 
 
 def generate_blueprint(spec: str, name: str | None = None, base: str | None = None,
@@ -225,6 +242,14 @@ def generate_blueprint(spec: str, name: str | None = None, base: str | None = No
     slug = _slugify(name or spec)
     root = _owner_blueprint_root(Path(home) if home else None)
     target = root / slug
+
+    # NEVER generate over a bundled blueprint: a slug matching a shipped
+    # blueprint is refused outright so the rmtree below can only ever touch
+    # factory-owned dirs (review round 2 #5).
+    if slug in _bundled_slugs():
+        raise ValueError(
+            f"refusing to generate '{slug}': bundled blueprint names are reserved — "
+            "pick a different --name")
 
     # Fixture path (demos/tests): deterministic pre-baked output.
     if use_fixture:

@@ -3,6 +3,13 @@ version: 0.1.0
 description: "Build, run, watch, fix and grow a multi-agent team: blueprint installer + Agent Factory + Deploy Guard (preflight/smoke/rollback), fleet status + mesh view, Cron911 silent-gap detection, Model Guard, team standup digest and mesh sync."
 python_dependencies:
   - "pyyaml>=6.0,<7"
+# Declared env the plugin READS via Hermes secret scope (agent.secret_scope.get_secret)
+# / the running user's env — all OPTIONAL: absent creds degrade to clean disables
+# (Twilio intake mock-only), never block install or other features.
+optional_env:
+  - TWILIO_ACCOUNT_SID
+  - TWILIO_AUTH_TOKEN
+  - TWILIO_PHONE_NUMBER
 provides_tools:
   - blueprint_list
   - team_deploy

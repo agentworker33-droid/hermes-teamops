@@ -1,8 +1,11 @@
 name: trading
 version: 0.1.0
-description: Full AI Trading team — 7 core fund agents + 3 satellites (polymarket,
-  launch sniper, yield farmer) from the shipped onboard-trading.sh vertical. Paper-trading
-  desk patterns included via the mesh edges.
+description: "Full AI Trading team — 7 core fund agents + 3 satellites (polymarket,
+  launch sniper, yield farmer) from the shipped onboard-trading.sh vertical.
+  ANALYSIS/PAPER-ONLY in this plugin: every cron observes, scores and simulates —
+  no real money, orders or wallet keys. Real execution stays the user's own
+  product decision (keys stay in the user's wallet; review round 2 #7)."
+paper_only: true
 roles:
 - name: boss
   title: Fund CIO — briefs, regime, fan-in/out

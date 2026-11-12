@@ -5,6 +5,13 @@ Every ``GET /`` regenerates the dashboard from the CURRENT HERMES_HOME state
 snapshot. Also serves ``/health`` for status checks. ``--daemon`` runs it in
 the background with a pidfile + log, like the Mnemosyne dashboard plugin.
 
+Security posture (catalog review round 2 #3): loopback-bound (127.0.0.1),
+Host header must be 127.0.0.1/localhost/[::1], NO CORS headers, and every
+``POST /api/action`` requires the per-start token written 0600 to
+``<home>/plugin-data/teamops-dashboard/server.token`` (injected into the
+served page for the dashboard's own buttons). Mutating actions that need an
+interactive human (deploy) are disabled on the server — CLI approval only.
+
 Usage:
     python -m teamops.server --home ~/.hermes --port 8781 --open   # foreground
     python -m teamops.server --home ~/.hermes --port 8781 --daemon # background
@@ -15,6 +22,7 @@ import argparse
 import json
 import os
 import re
+import secrets
 import signal
 import socket
 import subprocess
@@ -29,6 +37,24 @@ from pathlib import Path
 from . import dashboard, fleet, tools
 
 DEFAULT_PORT = 8781
+
+
+def tokenfile(home: Path) -> Path:
+    """Per-start auth token for POST actions (0600, never exposed cross-origin)."""
+    return _data_dir(home) / "server.token"
+
+
+def _inject_token(html: str, token: str) -> str:
+    """Embed the per-start token for the dashboard's own action buttons.
+
+    Same-origin pages can read it via JS; a THIRD-PARTY page cannot (no CORS
+    headers, and the Host header must be 127.0.0.1/localhost).
+    """
+    if not token or "</body>" not in html:
+        return html
+    return html.replace(
+        "</body>",
+        f'<script>window.TEAMOPS_TOKEN={json.dumps(token)};</script></body>')
 
 
 def _build(home: Path) -> str:
@@ -60,16 +86,26 @@ def _health_data(home: Path, full: bool = False) -> dict:
 
 class Handler(BaseHTTPRequestHandler):
     home: Path = None  # set per server instance
+    token: str = ""    # per-start auth token for /api/action (review round 2 #3)
     server_version = "TeamOps/0.1"
+
+    def _host_ok(self) -> bool:
+        """Only loopback origins (`127.0.0.1:<port>` / `localhost:<port>` / `[::1]`).
+
+        Blocks DNS-rebinding / third-party pages from talking to the local
+        dashboard server (review round 2 #3).
+        """
+        host = (self.headers.get("Host") or "").strip().lower()
+        hostname = host.rsplit(":", 1)[0].strip("[]")
+        return hostname in ("127.0.0.1", "localhost", "::1")
 
     def _send(self, code: int, body: bytes, ctype: str) -> None:
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        # NOTE: deliberately NO Access-Control-* headers — this is a local
+        # loopback server; cross-origin pages must not be able to call actions.
         self.send_header("X-TeamOps-Build", "live")
         self.end_headers()
         self.wfile.write(body)
@@ -79,8 +115,16 @@ class Handler(BaseHTTPRequestHandler):
         self._send(204, b"", "text/plain")
 
     def do_POST(self) -> None:  # noqa: N802 — /api/action executes dashboard buttons
+        if not self._host_ok():
+            self._send(403, b"forbidden host", "text/plain")
+            return
         if self.path.split("?", 1)[0] != "/api/action":
             self._send(404, b"not found", "application/json")
+            return
+        got = self.headers.get("X-TeamOps-Token") or ""
+        if not Handler.token or got != Handler.token:
+            self._send(403, json.dumps({"ok": False, "error": "missing or invalid server token"}).encode(),
+                       "application/json")
             return
         length = int(self.headers.get("Content-Length") or 0)
         if length > 65536:
@@ -98,11 +142,14 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, json.dumps(result).encode("utf-8"), "application/json")
 
     def do_GET(self) -> None:  # noqa: N802 (http.server API)
+        if not self._host_ok():
+            self._send(403, b"forbidden host", "text/plain")
+            return
         path = self.path.split("?")[0]
         try:
             if path in ("/", "/index.html"):
-                self._send(200, _build(Handler.home).encode("utf-8"),
-                           "text/html; charset=utf-8")
+                html = _inject_token(_build(Handler.home), Handler.token)
+                self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
             elif path == "/health":
                 parts = self.path.split("?", 1)[-1].split("&") if "?" in self.path else []
                 query_full = any(p.split("=", 1)[0] == "full" for p in parts)
@@ -235,6 +282,14 @@ def start_daemon(home: Path, port: int, open_browser: bool) -> dict:
 
 def serve(home: Path, port: int = DEFAULT_PORT, open_browser: bool = False) -> ThreadingHTTPServer:
     Handler.home = home
+    Handler.token = secrets.token_hex(32)
+    tk = tokenfile(home)
+    tk.parent.mkdir(parents=True, exist_ok=True)
+    tk.write_text(Handler.token)
+    try:
+        os.chmod(tk, 0o600)  # owner-only: contains a live action token
+    except OSError:  # pragma: no cover — chmod is best-effort on exotic fs
+        pass
     httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     pf = pidfile(home)
     pf.write_text(str(os.getpid()))
@@ -254,6 +309,10 @@ def serve(home: Path, port: int = DEFAULT_PORT, open_browser: bool = False) -> T
             pass
         try:
             portfile(home).unlink(missing_ok=True)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            tokenfile(home).unlink(missing_ok=True)
         except Exception:  # noqa: BLE001
             pass
         os._exit(0)
@@ -282,6 +341,8 @@ def _dispatch_action(home: Path, action: str, payload: dict | None) -> dict:
         args = payload.get("args") or []
         allowed = {str(Path.home() / s) for s, _, _, _, _ in fleet.EPHEMERAL_TEAMS}
         p = Path(script).expanduser()
+        if not p.is_absolute():
+            p = Path.home() / p  # roster entries are bare names under $HOME
         if str(p) not in allowed or not p.exists():
             return {"ok": False, "error": "unknown script — not in the team roster"}
         if not isinstance(args, list) or not all(
@@ -290,23 +351,35 @@ def _dispatch_action(home: Path, action: str, payload: dict | None) -> dict:
         out_dir = home / "plugin-data" / "teamops-dashboard" / "actions"
         out_dir.mkdir(parents=True, exist_ok=True)
         logf = out_dir / f"{p.stem}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
+        # minimal child env: PATH/HOME/LANG only — no profile secrets, no shell
+        # injection surface via inherited env (review round 2 #3)
+        env = {"PATH": os.environ.get("PATH", ""),
+               "HOME": str(Path.home()),
+               "LANG": os.environ.get("LANG", "C")}
         with open(logf, "w", encoding="utf-8") as f:
             proc = subprocess.Popen(["bash", str(p), *args], stdout=f, stderr=f,
-                                    start_new_session=True)
+                                    start_new_session=True, env=env)
         return {"ok": True, "started": True, "pid": proc.pid, "log": str(logf),
                 "text": f"started (pid {proc.pid}) — output: {logf.name}"}
 
     if action == "last_run":
         team = str(payload.get("team", ""))
+        # CONFINED to <home>/teams/<team>/ + strict team charset (review round 2 #3)
+        if not re.fullmatch(r"[a-z0-9-]+", team):
+            return {"ok": False, "error": "invalid team — must match ^[a-z0-9-]+$"}
+        team_root = (home / "teams" / team).resolve()
+        home_root = home.resolve()
+        if home_root not in team_root.parents:
+            return {"ok": False, "error": "team resolves outside <home>/teams/"}
         sub_agent = str(payload.get("script", ""))
         if sub_agent:
             sub_agent = Path(sub_agent).stem
-        candidates = []
+        candidates = [team_root]
         if sub_agent:
-            candidates.append(home / sub_agent)
-        if team:
-            candidates.append(home / team)
-            candidates.append(home / team.replace("-", ""))
+            sub_dir = (team_root / sub_agent).resolve()
+            if team_root not in sub_dir.parents and sub_dir != team_root:
+                return {"ok": False, "error": "script path resolves outside the team dir"}
+            candidates.append(sub_dir)
         newest: tuple[float, Path] | None = None
         for d in candidates:
             if not d.is_dir():
@@ -350,20 +423,12 @@ def _dispatch_action(home: Path, action: str, payload: dict | None) -> dict:
             return {"ok": False, "error": str(exc)}
 
     if action == "deploy":
-        name = str(payload.get("name", ""))
-        valid = {b.get("id") for b in fleet.available_blueprints(home)}
-        if name not in valid:
-            return {"ok": False, "error": "unknown blueprint"}
-        out_dir = home / "plugin-data" / "teamops-dashboard" / "actions"
-        out_dir.mkdir(parents=True, exist_ok=True)
-        logf = out_dir / f"deploy-{name}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
-        cmd = [sys.executable, "-m", "teamops.cli", "teams", "deploy", name, "--home", str(home)]
-        with open(logf, "w", encoding="utf-8") as f:
-            proc = subprocess.Popen(cmd, stdout=f, stderr=f,
-                                    cwd=str(Path(__file__).resolve().parent.parent),
-                                    start_new_session=True)
-        return {"ok": True, "started": True, "pid": proc.pid, "log": str(logf),
-                "text": f"deploy of {name} started (pid {proc.pid}) — Deploy Guard log: {logf.name}"}
+        # REMOVED from the live server (review round 2 #3): deploy creates
+        # profiles + crons, which needs a HUMAN approval via the CLI. The
+        # dashboard button is gone; this branch only answers legacy callers.
+        return {"ok": False, "error": "deploy is disabled on the live dashboard — "
+                "run 'hermes teams deploy <name>' from the CLI so a human approves "
+                "(OWNER ACTION)."}
 
     if action in ("generate", "create"):
         prompt = str(payload.get("prompt", ""))

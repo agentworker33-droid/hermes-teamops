@@ -4,8 +4,9 @@ OPTIONAL, mock-first: no credentials are ever required for tests or demos.
 The suite asserts the full graceful-degrade contract — absent Twilio creds →
 clean disabled refusal, plugin stays 100% functional; mock=True runs the
 whole pipeline (parse → transcribe → triage → card → ledger → TwiML ack).
-The plugin never stores/ships credentials: only the running user's env or
-<home>/config/twilio.env is read, and outputs only contain masked values.
+The plugin never stores/ships credentials (catalog review round 2 #6): only
+Hermes' secret scope (agent.secret_scope.get_secret) or the running user's
+env is read — no twilio.env file — and outputs only contain masked values.
 """
 from __future__ import annotations
 
@@ -28,32 +29,27 @@ def _no_twilio_env(monkeypatch):
     """Tests must never see the host's real Twilio creds."""
     for name in ENV_NAMES:
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(ti, "_secret_scope_get", lambda name: None)
 
 
-def write_dotenv(home: Path, **vals) -> Path:
-    d = home / "config"
-    d.mkdir(parents=True, exist_ok=True)
-    p = d / "twilio.env"
-    p.write_text("\n".join(f"{k}={v}" for k, v in vals.items()) + "\n")
-    return p
+SCOPED = {ti.ENV_SID: "ACscoped", ti.ENV_AUTH: "tokscope", ti.ENV_PHONE: "+155****0000"}
 
 
 # -- config (creds source) ----------------------------------------------------
 def test_config_from_env():
     cfg = ti.load_config(environ={ti.ENV_SID: "ACabc", ti.ENV_AUTH: "tok",
-                                  ti.ENV_PHONE: "+15551234567"})
+                                  ti.ENV_PHONE: "+155****4567"})
     assert cfg["present"] is True
     assert cfg["source"] == "env"
     assert cfg["reason"] == ""
 
 
-def test_config_from_dotenv(tmp_path):
-    write_dotenv(tmp_path, **{ti.ENV_SID: "ACdot", ti.ENV_AUTH: "tokd",
-                              ti.ENV_PHONE: "+15550001111"})
+def test_config_from_secret_scope(tmp_path, monkeypatch):
+    monkeypatch.setattr(ti, "_secret_scope_get", lambda name: SCOPED.get(name))
     cfg = ti.load_config(home=tmp_path)
     assert cfg["present"] is True
-    assert cfg["source"] == "twilio.env"
-    assert cfg["account_sid"] == "ACdot"
+    assert cfg["source"] == "secret_scope"
+    assert cfg["account_sid"] == "ACscoped"
 
 
 def test_config_missing_creds(tmp_path):
@@ -65,27 +61,27 @@ def test_config_missing_creds(tmp_path):
 
 
 def test_config_partial_creds(tmp_path):
-    write_dotenv(tmp_path, **{ti.ENV_SID: "AConly"})
-    cfg = ti.load_config(home=tmp_path)
+    cfg = ti.load_config(home=tmp_path, environ={ti.ENV_SID: "AConly"})
     assert cfg["present"] is False
     assert ti.ENV_AUTH in cfg["reason"] and ti.ENV_PHONE in cfg["reason"]
 
 
-def test_env_overrides_dotenv(tmp_path):
-    write_dotenv(tmp_path, **{ti.ENV_SID: "ACdot", ti.ENV_AUTH: "t", ti.ENV_PHONE: "p"})
+def test_env_overrides_secret_scope(tmp_path, monkeypatch):
+    monkeypatch.setattr(ti, "_secret_scope_get", lambda name: SCOPED.get(name))
     cfg = ti.load_config(home=tmp_path, environ={ti.ENV_SID: "ACenv"})
     assert cfg["account_sid"] == "ACenv"
     assert cfg["source"] == "env"
 
 
-def test_status_masks_secrets(tmp_path):
-    write_dotenv(tmp_path, **{ti.ENV_SID: "AC0123456789", ti.ENV_AUTH: "secret",
-                              ti.ENV_PHONE: "+15551234567"})
+def test_status_masks_secrets(tmp_path, monkeypatch):
+    monkeypatch.setenv(ti.ENV_SID, "AC0123456789")
+    monkeypatch.setenv(ti.ENV_AUTH, "AUTHTOK999999")
+    monkeypatch.setenv(ti.ENV_PHONE, "+155****4567")
     s = ti.status(home=tmp_path)
     assert s["enabled"] is True
     assert s["mode"] == "live"
     outp = json.dumps(s, ensure_ascii=False)
-    assert "AC0123456789" not in outp and "secret" not in outp
+    assert "AC0123456789" not in outp and "AUTHTOK999999" not in outp
     assert "AC…6789" in outp and "+1…4567" in outp
 
 

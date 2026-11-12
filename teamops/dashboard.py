@@ -440,6 +440,7 @@ li.more { list-style: none; color: var(--dim); font-size: 11px; font-family: var
 .launchbox .roles { color: var(--dim); font-size: 11.5px; font-family: var(--mono); margin-bottom: 8px; }
 .launchbox .desc { margin-bottom: 12px; }
 .launchbox .acts { margin-top: auto; }
+.launchbox .clihint { display: block; font-family: var(--mono); font-size: 11px; color: var(--dim); background: var(--panel2, var(--panel)); border: 1px dashed var(--line); border-radius: 4px; padding: 4px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .launchbox.factory { border-top-color: var(--white); }
 .tpl-row { display: flex; flex-wrap: wrap; gap: 9px; }
 .tpl-chip { font-family: var(--mono); font-size: 11.5px; letter-spacing: .7px; color: var(--mut);
@@ -856,7 +857,9 @@ _JS = """
   function runLocal(action, payload, prompt) {
     if (!action || actionRan) return;
     actionRan = true;
-    fetch('/api/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: action, payload: payload }) })
+    var headers = { 'Content-Type': 'application/json' };
+    if (window.TEAMOPS_TOKEN) headers['X-TeamOps-Token'] = window.TEAMOPS_TOKEN;
+    fetch('/api/action', { method: 'POST', headers: headers, body: JSON.stringify({ action: action, payload: payload }) })
       .then(function (res) { return res.json(); })
       .then(function (data) { showResult(data); })
       .catch(function () {
@@ -1070,22 +1073,6 @@ def _standup_prompt(tname: str) -> str:
     )
 
 
-def _deploy_prompt(b: dict) -> str:
-    bid = b.get("id", "")
-    return (
-        f"teamops: deploy the {b.get('name', bid)} blueprint team end to end, "
-        f"exactly like our Deploy Guard.\n\n"
-        f"1) PREFLIGHT: parse blueprints/{bid}/team.yaml; bash -n any generated "
-        f"scripts; check roles, gates, ids (no phantom agents, no duplicate R###, "
-        f"pricing matches the site if present).\n"
-        f"2) DEPLOY: run hermes teams deploy {bid} against HERMES_HOME.\n"
-        f"3) GUARD: dry-run first, then smoke + verify each member profile boots; "
-        f"if any gate fails, roll back (hermes teams rollback) and report what broke.\n"
-        f"4) REPORT: a table of member profiles + status + crons, what the buyer "
-        f"sees on day 1, and the first command to run. NEVER provision on the "
-        f"portal VPS (blueprint store only)."
-    )
-
 
 CREATE_TEAM_PROMPT = (
     "teamops: use the Agent Factory to create a NEW team blueprint from my "
@@ -1135,7 +1122,11 @@ def _eph_card(t: dict) -> str:
 
 
 def _launch_card(b: dict) -> str:
-    """Blueprint card in the Create view: roles + description + deploy button."""
+    """Blueprint card in the Create view: roles + description + CLI hint.
+
+    NOTE: the DEPLOY button was removed (review round 2 #3) — deploy creates
+    profiles + crons and needs a HUMAN approval, which only the CLI can get.
+    """
     roles = ", ".join(_esc(r) for r in (b.get("roles") or []))
     return (
         f'<div class="launchbox" data-team="{_esc(b.get("id", ""))}">'
@@ -1144,7 +1135,7 @@ def _launch_card(b: dict) -> str:
         f'<div class="roles">{roles or "no roles listed"}</div>'
         f'<p class="desc">{_esc(b.get("description", ""))}</p>'
         f'<div class="acts">'
-        f'{_btn("deploy", {"name": b.get("id")}, _deploy_prompt(b), "DEPLOY", "act primary")}'
+        f'<code class="clihint">hermes teams deploy {_esc(b.get("id", ""))}</code>'
         f'</div></div>'
     )
 

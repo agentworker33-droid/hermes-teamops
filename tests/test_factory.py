@@ -13,6 +13,9 @@ ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "teamops" / "blueprints" / "fixtures"
 SALES = ROOT / "teamops" / "blueprints" / "sales"
 
+# The real root resolver, captured before the autouse fixture monkeypatches it.
+_REAL_OWNER_ROOT = factory._owner_blueprint_root
+
 
 @pytest.fixture(autouse=True)
 def _isolate_blueprint_root(tmp_path, monkeypatch):
@@ -105,6 +108,24 @@ def test_blueprint_root_confinement(tmp_path, monkeypatch):
     root, meta = factory.generate_blueprint("add a billing agent to sales", name="confined")
     assert root == outside / "confined"
     assert root.is_dir()
+
+
+def test_owner_root_defaults_under_home_plugin_data(tmp_path):
+    """Round 2 #5: factory default root is the TARGET home's plugin-data
+    dir — generated blueprints never write into the bundled blueprints dir."""
+    assert (_REAL_OWNER_ROOT(tmp_path)
+            == tmp_path / "plugin-data" / "teamops" / "blueprints")
+
+
+def test_generate_refuses_bundled_slug(tmp_path, monkeypatch):
+    """Round 2 #5: a slug matching a bundled blueprint is refused outright —
+    the rmtree path can never delete a shipped blueprint."""
+    with pytest.raises(ValueError, match="bundled blueprint names are reserved"):
+        factory.generate_blueprint("add a billing agent to sales", name="sales")
+    with pytest.raises(ValueError, match="bundled blueprint names are reserved"):
+        factory.generate_blueprint("whatever", name="trading")
+    assert not (tmp_path / "blueprints" / "sales").exists()
+    assert not (tmp_path / "blueprints" / "trading").exists()
 
 
 def test_bake_fixture_from_sales(tmp_path):
