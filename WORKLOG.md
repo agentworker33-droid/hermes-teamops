@@ -4,9 +4,18 @@
 > Order: D0 scaffold → D1 Build module → D2 Watch/Fix/Grow → D3 ship.
 
 ## Status
-- Phase: **POST-DEADLINE — catalog review ROUND 3 fixes LANDED (Nov 12 morning, all 3 blocking + 2 recommended fixed, 209 tests green); PR #151675 re-pinned + delta comment posted; still AWAITING round-3 re-review (no new review through evening shift).**
-- Next task: keep answering maintainer re-review as it arrives; D3 form (FwJLvOln) **never submitted — still blocked on Dalton's Discord username** (deadline passed); optional @NousResearch tag on the X demo post needs Dalton's OK (public post).
-- Deadline: **Nov 11 2026 5PM EST — passed; form not submitted (blocker = missing Discord handle).**
+- Phase: **CATALOG LIVE — PR #151675 MERGED by maintainer (teknium1) Nov 13 10:53Z; plugin-catalog/hermes-teamops.yaml now in NousResearch/hermes-agent main (pins c7ab710, 16 tools + 1 hook); maintainer approved the round-3 pin and added listing chores himself (slimmed description + requires_hermes >=0.21.4). 209 tests green, doctor OK, validate passed.**
+- Next task: D3 form (FwJLvOln) **never submitted — still blocked on Dalton's Discord username** (deadline passed, but keep scanning); optional @NousResearch tag on the X demo post needs Dalton's OK (public post).
+- Deadline: **Nov 11 2026 5PM EST — passed; form not submitted (blocker = missing Discord handle); catalog entry itself fully merged post-deadline.**
+
+## 2026-11-13 08:00 — MORNING shift (PR #151675 MERGED — catalog entry LIVE)
+- [x] **PR #151675 MERGED by maintainer** (teknium1, 2026-11-13T10:53:41Z, merge commit `6532365bca`): the round-3 pin got APPROVED (09:07Z review: "Every earlier ask is fixed at the pinned commit … clean"), and teknium1 pushed a `chore(catalog): review chores` commit (60e7a7eb76) onto the PR branch himself (slimmed description + added `requires_hermes: ">=0.21.4"`, `readme: true`, `platforms: []`). Merged catalog yaml verified live on NousResearch/hermes-agent main: pins **c7ab710** (== ancestor of local HEAD; still reachable on public repo), 16 tools + 1 hook. **Plugin is now installable from the official catalog.**
+- [x] **Finished uncommitted work left after evening shift**: `teamops/dashboard.py` had a +17-line CSS block (button hover invert treatment, nous-portal/vault look) mtime 02:08 — additive-only, tests stayed 209 GREEN with it in tree; committed as `70cf29a` style(dashboard).
+- [x] Gates: `python3 -m pytest -q` → **209 passed**; `hermes plugins doctor teamops/` → OK **16 tools, 1 hook**; `hermes plugins validate teamops --install-deps` → "Validation passed" (only pre-existing ssh_dir_access cautions).
+- [x] Blocker persists: Dalton's Discord username **still not found** (re-scanned memories/profiles/configs/plans + files modified since 20:00 — only gateway delivery-target docs + unsloth discord.gg links). Form FwJLvOln NOT submitted — never fabricate the handle.
+- [x] No live profiles/crons touched (uncommitted local fix committed is repo-only; 0 teamops-* profiles in live home unchanged).
+
+
 
 ## 2026-11-12 20:00 — EVENING shift (verification — no new review, all GREEN)
 - [x] Gates: repo clean at `7a57e19` == origin/main (ls-remote verified); `python3 -m pytest -q` → **209 passed**; `hermes plugins doctor teamops/` → OK **16 tools, 1 hook**; `hermes plugins validate teamops --install-deps` → "Validation passed". No code changes needed — nothing new to fix.
