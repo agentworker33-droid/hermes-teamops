@@ -606,6 +606,23 @@ _RUN_CSS = """
 .runs-more:hover { color: var(--white); border-color: var(--gray); }
 .runs-list.capped .run-row[data-run-slot="more"] { display: none; }
 .runs-list.capped .run-row[data-show-after] { display: none; }
+
+/* ---------- button treatment: invert on hover (nous-portal / vault style) ---------- */
+.act, .tpl-chip, .fchip, .team-btn, .runs-more, .needs-item, .needs-strip, .hf, .toast button {
+  transition: background .15s, color .15s, border-color .15s, box-shadow .15s;
+}
+.act:hover { background: var(--white); color: var(--black); border-color: var(--white); }
+.act.primary { background: var(--bg); color: var(--accent); border-color: var(--accent); font-weight: 700; }
+.act.primary:hover { background: var(--accent); color: var(--black); border-color: var(--accent); box-shadow: 0 0 22px var(--pulse-glow); }
+.tpl-chip:hover { background: var(--white); color: var(--black); border-color: var(--white); }
+.fchip:hover { background: var(--white); color: var(--black); border-color: var(--white); }
+.team-btn:hover { background: var(--white); color: var(--black); border-color: var(--white); }
+.runs-more:hover { background: var(--white); color: var(--black); border-color: var(--white); }
+.needs-strip:hover { background: var(--white); color: var(--black); border-color: var(--white); }
+.needs-item:hover { background: var(--white); color: var(--black); }
+.hf { background: var(--bg); color: #ff8080; border-color: var(--danger-border); }
+.hf:hover { background: var(--red); color: var(--black); border-color: var(--red); box-shadow: 0 0 18px var(--err-glow); }
+.toast button:hover { background: var(--white); color: var(--black); border-color: var(--white); }
 """
 
 _NEEDS_CSS = """
