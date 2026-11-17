@@ -8,6 +8,12 @@
 - Next task: D3 form (FwJLvOln) **never submitted — still blocked on Dalton's Discord username** (deadline passed, but keep scanning); optional @NousResearch tag on the X demo post needs Dalton's OK (public post).
 - Deadline: **Nov 11 2026 5PM EST — passed; form not submitted (blocker = missing Discord handle); catalog entry itself fully merged post-deadline.**
 
+## 2026-11-17 02:00 — OVERNIGHT sweep (verification — all GREEN, blocker persists)
+- [x] Gates: repo clean at `b8695e0` == origin/main (fetch + ls-remote verified); `python3 -m pytest -q` → **209 passed**; `hermes plugins doctor teamops/` → OK **16 tools, 1 hook**. No code changes needed — nothing new to fix.
+- [x] **PR #151675 re-verified live** (GitHub API): state **closed / merged: true**, merged_at 2026-11-13T10:53:41Z, merge commit `6532365bca`; catalog entry unchanged on NousResearch/hermes-agent main.
+- [x] Blocker persists: Dalton's Discord username **still not found** (fresh scan of files modified since 20:05 Nov 16 = cron-runtime noise only — plugin-update-checks results.json per profile, skills .usage.json, checkpoints store, prepared-submissions JSON; targeted `discord.com/users/` / `discord_username` / `@user#0000` probes across prepared-submissions, new checkpoints, plugin-update-check results, memories/plans/profiles → 0 hits). Form FwJLvOln NOT submitted — never fabricate the handle.
+- [x] No live profiles/crons touched (read-only verification + doc commit only; 0 teamops-* profiles in live home).
+
 ## 2026-11-16 20:00 — EVENING shift (verification — all GREEN, blocker persists)
 - [x] Gates: repo clean at `f25bc28` == origin/main (ls-remote verified); `python3 -m pytest -q` → **209 passed**; `hermes plugins doctor teamops/` → OK **16 tools, 1 hook**; `hermes plugins validate teamops --install-deps` → "Validation passed" (only pre-existing ssh_dir_access cautions). No code changes needed — nothing new to fix.
 - [x] **PR #151675 re-verified live** (GitHub API): state **closed / merged: true**, merged_at 2026-11-13T10:53:41Z, merge commit `6532365bca`; catalog entry re-fetched raw from NousResearch/hermes-agent main — unchanged (pins c7ab710, 16 tools + 1 hook).
